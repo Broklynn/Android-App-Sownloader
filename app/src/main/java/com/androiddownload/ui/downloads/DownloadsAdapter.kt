@@ -163,7 +163,7 @@ class DownloadsAdapter(
                 DownloadStatus.PAUSED -> R.color.warning
                 DownloadStatus.QUEUED,
                 DownloadStatus.PREPARING,
-                DownloadStatus.RUNNING -> R.color.brand_dark
+                DownloadStatus.RUNNING -> R.color.brand
             }
             return root.context.getColor(colorRes)
         }

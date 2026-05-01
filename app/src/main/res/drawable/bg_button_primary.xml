@@ -2,20 +2,26 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_enabled="false">
         <shape>
-            <corners android:radius="8dp" />
+            <corners android:radius="14dp" />
             <solid android:color="@color/button_disabled" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape>
-            <corners android:radius="8dp" />
-            <solid android:color="@color/brand_dark" />
+            <corners android:radius="14dp" />
+            <gradient
+                android:angle="0"
+                android:endColor="@color/accent_secondary"
+                android:startColor="@color/brand_dark" />
         </shape>
     </item>
     <item>
         <shape>
-            <corners android:radius="8dp" />
-            <solid android:color="@color/brand" />
+            <corners android:radius="14dp" />
+            <gradient
+                android:angle="0"
+                android:endColor="@color/accent_secondary"
+                android:startColor="@color/brand" />
         </shape>
     </item>
 </selector>

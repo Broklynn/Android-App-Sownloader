@@ -2,87 +2,51 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface"
+    android:background="@color/background_main"
     android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingTop="14dp"
     android:paddingEnd="16dp"
     android:paddingBottom="12dp">
 
-    <TextView
-        android:id="@+id/appTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-medium"
-        android:text="@string/app_name"
-        android:textColor="@color/text_primary"
-        android:textSize="25sp" />
-
     <LinearLayout
-        android:id="@+id/mainTabBar"
+        android:id="@+id/appHeader"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:background="@drawable/bg_tab_bar"
-        android:orientation="horizontal"
-        android:padding="4dp">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/homeTabButton"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_tab_selected"
-            android:minHeight="0dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:text="@string/home"
-            android:textAllCaps="false"
-            android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+        <View
+            android:layout_width="12dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_title_mark" />
 
-        <Button
-            android:id="@+id/downloadsTabButton"
+        <TextView
+            android:id="@+id/appTitle"
             android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_marginStart="4dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:background="@drawable/bg_tab_unselected"
-            android:minHeight="0dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:text="@string/downloads"
-            android:textAllCaps="false"
-            android:textColor="@color/tab_text"
-            android:textSize="13sp" />
-
-        <Button
-            android:id="@+id/browserTabButton"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
-            android:layout_marginStart="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_tab_unselected"
-            android:minHeight="0dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:text="@string/browser"
-            android:textAllCaps="false"
-            android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/app_name"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp" />
     </LinearLayout>
 
     <FrameLayout
+        android:id="@+id/mainContent"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="16dp"
         android:layout_weight="1">
 
         <ScrollView
             android:id="@+id/homeContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true">
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:paddingBottom="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -98,24 +62,109 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="15sp" />
 
+                <LinearLayout
+                    android:id="@+id/homeInfoCards"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="96dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_home_card"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_card_mp4_title"
+                            android:textColor="@color/brand"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/home_card_mp4_body"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="96dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_home_card"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_card_mp3_title"
+                            android:textColor="@color/accent_secondary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/home_card_mp3_body"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="96dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_home_card"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_card_direct_title"
+                            android:textColor="@color/success"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/home_card_direct_body"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
                 <EditText
                     android:id="@+id/urlInput"
                     android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_height="54dp"
+                    android:layout_marginTop="18dp"
                     android:autofillHints="url"
                     android:background="@drawable/bg_input"
                     android:hint="@string/url_hint"
                     android:inputType="textUri"
                     android:singleLine="true"
-                    android:textColorHint="@color/text_muted"
                     android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted"
                     android:textSize="15sp" />
 
                 <Button
                     android:id="@+id/downloadButton"
                     android:layout_width="match_parent"
-                    android:layout_height="50dp"
+                    android:layout_height="52dp"
                     android:layout_marginTop="12dp"
                     android:background="@drawable/bg_button_primary"
                     android:minHeight="0dp"
@@ -157,13 +206,13 @@
                     android:hint="@string/browser_url_hint"
                     android:inputType="textUri"
                     android:singleLine="true"
-                    android:textColorHint="@color/text_muted"
                     android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted"
                     android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/browserGoButton"
-                    android:layout_width="64dp"
+                    android:layout_width="62dp"
                     android:layout_height="48dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/bg_button_primary"
@@ -195,7 +244,7 @@
                     android:text="@string/browser_back"
                     android:textAllCaps="false"
                     android:textColor="@color/button_secondary_text"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/browserForwardButton"
@@ -212,7 +261,7 @@
                     android:text="@string/browser_forward"
                     android:textAllCaps="false"
                     android:textColor="@color/button_secondary_text"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/browserReloadButton"
@@ -229,7 +278,7 @@
                     android:text="@string/browser_reload"
                     android:textAllCaps="false"
                     android:textColor="@color/button_secondary_text"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <Button
@@ -309,4 +358,58 @@
                 android:textSize="16sp" />
         </FrameLayout>
     </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/mainTabBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_tab_bar"
+        android:orientation="horizontal"
+        android:padding="5dp">
+
+        <Button
+            android:id="@+id/homeTabButton"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_tab_selected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/home"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/downloadsTabButton"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_tab_unselected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/downloads"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/browserTabButton"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_tab_unselected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/browser"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
+    </LinearLayout>
 </LinearLayout>
