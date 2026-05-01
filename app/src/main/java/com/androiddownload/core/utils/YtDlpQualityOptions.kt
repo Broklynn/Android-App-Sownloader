@@ -1,6 +1,8 @@
 package com.androiddownload.core.utils
 
 import android.content.Context
+import com.androiddownload.core.model.DownloadEntity
+import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.yausername.youtubedl_android.mapper.VideoInfo
 
 data class YtDlpQualityOption(
@@ -10,17 +12,13 @@ data class YtDlpQualityOption(
 
 object YtDlpQualityOptions {
     fun build(context: Context, videoInfo: VideoInfo?): List<YtDlpQualityOption> {
-        val options = mutableListOf(
-            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_best), "best"),
-            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_720p), "best[height<=720]"),
-            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_480p), "best[height<=480]"),
-            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_360p), "best[height<=360]")
+        return listOf(
+            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp4_best), "best"),
+            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp4_720p), "best[height<=720]"),
+            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp4_480p), "best[height<=480]"),
+            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp4_360p), "best[height<=360]"),
+            YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp3), "mp3")
         )
-
-        options.add(YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_audio_original), "bestaudio"))
-        options.add(YtDlpQualityOption(context.getString(com.androiddownload.R.string.ytdlp_quality_mp3), "mp3"))
-
-        return options
     }
 
     fun displayTitle(videoInfo: VideoInfo?): String {
@@ -28,5 +26,20 @@ object YtDlpQualityOptions {
             ?: videoInfo?.title?.takeIf { it.isNotBlank() }
             ?: "Escolha a qualidade"
         return title
+    }
+
+    fun labelForDownload(download: DownloadEntity): String {
+        val selector = download.qualitySelector?.trim().orEmpty()
+        return when {
+            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "Download direto"
+            selector.isBlank() -> "Formato personalizado"
+            selector == "best" -> "MP4 - Melhor qualidade"
+            selector == "best[height<=720]" -> "MP4 - 720p"
+            selector == "best[height<=480]" -> "MP4 - 480p"
+            selector == "best[height<=360]" -> "MP4 - 360p"
+            selector == "mp3" -> "MP3"
+            selector == "bestaudio" -> "Áudio original"
+            else -> "Formato personalizado"
+        }
     }
 }

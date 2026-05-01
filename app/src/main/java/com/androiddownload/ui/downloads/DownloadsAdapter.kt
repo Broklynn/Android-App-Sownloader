@@ -13,6 +13,7 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
+import com.androiddownload.core.utils.YtDlpQualityOptions
 
 class DownloadsAdapter(
     context: Context,
@@ -62,6 +63,7 @@ class DownloadsAdapter(
         private val root: View = view
         private val fileNameText: TextView = view.findViewById(R.id.fileNameText)
         private val statusText: TextView = view.findViewById(R.id.statusText)
+        private val formatText: TextView = view.findViewById(R.id.formatText)
         private val progressBar: ProgressBar = view.findViewById(R.id.progressBar)
         private val sizeText: TextView = view.findViewById(R.id.sizeText)
         private val speedText: TextView = view.findViewById(R.id.speedText)
@@ -73,6 +75,9 @@ class DownloadsAdapter(
         fun bind(download: DownloadEntity) {
             fileNameText.text = download.fileName
             statusText.text = download.status.name
+            val formatLabel = YtDlpQualityOptions.labelForDownload(download)
+            formatText.text = formatLabel
+            formatText.visibility = if (formatLabel.isBlank()) View.GONE else View.VISIBLE
             progressBar.isIndeterminate = isIndeterminate(download)
             progressBar.progress = download.progress
             sizeText.text = buildSizeText(download)

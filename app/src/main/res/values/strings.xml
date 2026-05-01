@@ -27,10 +27,9 @@
     <string name="download_ytdlp_error">Nao foi possivel baixar este link com yt-dlp.</string>
     <string name="download_audio_error">Nao foi possivel baixar o audio deste video. Tente outra qualidade ou tente atualizar o yt-dlp.</string>
     <string name="download_mp3_error">Nao foi possivel converter para MP3. Verifique o ffmpeg ou tente baixar o audio original.</string>
-    <string name="ytdlp_quality_best">Melhor qualidade</string>
-    <string name="ytdlp_quality_720p">720p</string>
-    <string name="ytdlp_quality_480p">480p</string>
-    <string name="ytdlp_quality_360p">360p</string>
-    <string name="ytdlp_quality_audio_original">Audio original</string>
+    <string name="ytdlp_quality_mp4_best">MP4 - Melhor qualidade</string>
+    <string name="ytdlp_quality_mp4_720p">MP4 - 720p</string>
+    <string name="ytdlp_quality_mp4_480p">MP4 - 480p</string>
+    <string name="ytdlp_quality_mp4_360p">MP4 - 360p</string>
     <string name="ytdlp_quality_mp3">MP3</string>
 </resources>
