@@ -293,6 +293,19 @@
                 android:textColor="@color/button_primary_text"
                 android:textSize="14sp" />
 
+            <Button
+                android:id="@+id/browserDetectedMediaButton"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_button_secondary"
+                android:enabled="false"
+                android:minHeight="0dp"
+                android:text="@string/browser_detected_media_initial"
+                android:textAllCaps="false"
+                android:textColor="@color/button_secondary_text"
+                android:textSize="13sp" />
+
             <ProgressBar
                 android:id="@+id/browserProgressBar"
                 style="?android:attr/progressBarStyleHorizontal"
@@ -357,6 +370,67 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="16sp" />
         </FrameLayout>
+
+        <ScrollView
+            android:id="@+id/settingsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/settings_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_home_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/default_video_quality_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/defaultQualityValueText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/defaultQualityButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_button_secondary"
+                        android:minHeight="0dp"
+                        android:text="@string/change_default_quality"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_secondary_text"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
     </FrameLayout>
 
     <LinearLayout
@@ -380,7 +454,7 @@
             android:text="@string/home"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/downloadsTabButton"
@@ -395,7 +469,7 @@
             android:text="@string/downloads"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/browserTabButton"
@@ -410,6 +484,22 @@
             android:text="@string/browser"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/settingsTabButton"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_tab_unselected"
+            android:minHeight="0dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:singleLine="true"
+            android:text="@string/settings_tab"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="11sp" />
     </LinearLayout>
 </LinearLayout>

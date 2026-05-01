@@ -21,7 +21,10 @@ object DownloadSourceClassifier {
 
     private val DIRECT_FILE_EXTENSIONS = setOf(
         "mp4",
+        "webm",
         "mp3",
+        "m4a",
+        "m3u8",
         "jpg",
         "jpeg",
         "png",
