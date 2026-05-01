@@ -64,6 +64,7 @@ class DownloadsAdapter(
         private val fileNameText: TextView = view.findViewById(R.id.fileNameText)
         private val statusText: TextView = view.findViewById(R.id.statusText)
         private val formatText: TextView = view.findViewById(R.id.formatText)
+        private val progressText: TextView = view.findViewById(R.id.progressText)
         private val progressBar: ProgressBar = view.findViewById(R.id.progressBar)
         private val sizeText: TextView = view.findViewById(R.id.sizeText)
         private val speedText: TextView = view.findViewById(R.id.speedText)
@@ -74,12 +75,16 @@ class DownloadsAdapter(
 
         fun bind(download: DownloadEntity) {
             fileNameText.text = download.fileName
-            statusText.text = download.status.name
+            statusText.text = statusLabel(download.status)
+            statusText.setTextColor(statusColor(download.status))
             val formatLabel = YtDlpQualityOptions.labelForDownload(download)
             formatText.text = formatLabel
             formatText.visibility = if (formatLabel.isBlank()) View.GONE else View.VISIBLE
-            progressBar.isIndeterminate = isIndeterminate(download)
-            progressBar.progress = download.progress
+            val indeterminate = isIndeterminate(download)
+            val progress = normalizedProgress(download)
+            progressBar.isIndeterminate = indeterminate
+            progressBar.progress = progress
+            progressText.text = progressLabel(indeterminate, progress)
             sizeText.text = buildSizeText(download)
             speedText.text = FileSizeFormatter.formatSpeed(download.speed)
             val actionConfig = actionConfig(download)
@@ -121,6 +126,46 @@ class DownloadsAdapter(
         private fun isIndeterminate(download: DownloadEntity): Boolean {
             return download.totalBytes <= 0 &&
                 (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
+        }
+
+        private fun normalizedProgress(download: DownloadEntity): Int {
+            return when (download.status) {
+                DownloadStatus.COMPLETED -> 100
+                else -> download.progress.coerceIn(0, 100)
+            }
+        }
+
+        private fun progressLabel(indeterminate: Boolean, progress: Int): String {
+            return if (indeterminate) {
+                root.context.getString(R.string.download_progress_unknown)
+            } else {
+                "$progress%"
+            }
+        }
+
+        private fun statusLabel(status: DownloadStatus): String {
+            return when (status) {
+                DownloadStatus.QUEUED -> root.context.getString(R.string.status_queued)
+                DownloadStatus.PREPARING -> root.context.getString(R.string.status_preparing)
+                DownloadStatus.RUNNING -> root.context.getString(R.string.status_running)
+                DownloadStatus.PAUSED -> root.context.getString(R.string.status_paused)
+                DownloadStatus.FAILED -> root.context.getString(R.string.status_failed)
+                DownloadStatus.COMPLETED -> root.context.getString(R.string.status_completed)
+                DownloadStatus.CANCELED -> root.context.getString(R.string.status_canceled)
+            }
+        }
+
+        private fun statusColor(status: DownloadStatus): Int {
+            val colorRes = when (status) {
+                DownloadStatus.COMPLETED -> R.color.success
+                DownloadStatus.FAILED,
+                DownloadStatus.CANCELED -> R.color.danger
+                DownloadStatus.PAUSED -> R.color.warning
+                DownloadStatus.QUEUED,
+                DownloadStatus.PREPARING,
+                DownloadStatus.RUNNING -> R.color.brand_dark
+            }
+            return root.context.getColor(colorRes)
         }
 
         private fun canCancel(download: DownloadEntity): Boolean {

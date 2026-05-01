@@ -4,84 +4,136 @@
     android:layout_height="match_parent"
     android:background="@color/surface"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingStart="16dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="12dp">
 
     <TextView
         android:id="@+id/appTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
         android:text="@string/app_name"
-        android:textColor="@color/brand_dark"
-        android:textSize="24sp"
-        android:textStyle="bold" />
+        android:textColor="@color/text_primary"
+        android:textSize="25sp" />
 
     <LinearLayout
+        android:id="@+id/mainTabBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:orientation="horizontal">
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_tab_bar"
+        android:orientation="horizontal"
+        android:padding="4dp">
 
         <Button
             android:id="@+id/homeTabButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="42dp"
             android:layout_weight="1"
-            android:text="@string/home" />
+            android:background="@drawable/bg_tab_selected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/home"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
 
         <Button
             android:id="@+id/downloadsTabButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="4dp"
             android:layout_weight="1"
-            android:text="@string/downloads" />
+            android:background="@drawable/bg_tab_unselected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/downloads"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
 
         <Button
             android:id="@+id/browserTabButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="4dp"
             android:layout_weight="1"
-            android:text="@string/browser" />
+            android:background="@drawable/bg_tab_unselected"
+            android:minHeight="0dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="@string/browser"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="14dp"
         android:layout_weight="1">
 
-        <LinearLayout
+        <ScrollView
             android:id="@+id/homeContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:fillViewport="true">
 
-            <EditText
-                android:id="@+id/urlInput"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:autofillHints="url"
-                android:hint="@string/url_hint"
-                android:inputType="textUri"
-                android:minHeight="56dp"
-                android:singleLine="true" />
+                android:orientation="vertical">
 
-            <Button
-                android:id="@+id/downloadButton"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="12dp"
-                android:text="@string/download" />
+                <TextView
+                    android:id="@+id/homeHelpText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/home_download_help"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
 
-            <TextView
-                android:id="@+id/urlErrorText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="#B00020"
-                android:visibility="gone" />
-        </LinearLayout>
+                <EditText
+                    android:id="@+id/urlInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="16dp"
+                    android:autofillHints="url"
+                    android:background="@drawable/bg_input"
+                    android:hint="@string/url_hint"
+                    android:inputType="textUri"
+                    android:singleLine="true"
+                    android:textColorHint="@color/text_muted"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+
+                <Button
+                    android:id="@+id/downloadButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_button_primary"
+                    android:minHeight="0dp"
+                    android:text="@string/download"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_primary_text"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/urlErrorText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textColor="@color/danger"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
 
         <LinearLayout
             android:id="@+id/browserContainer"
@@ -98,35 +150,136 @@
                 <EditText
                     android:id="@+id/browserUrlInput"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:autofillHints="url"
+                    android:background="@drawable/bg_input"
                     android:hint="@string/browser_url_hint"
                     android:inputType="textUri"
-                    android:minHeight="56dp"
-                    android:singleLine="true" />
+                    android:singleLine="true"
+                    android:textColorHint="@color/text_muted"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/browserGoButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="56dp"
+                    android:layout_width="64dp"
+                    android:layout_height="48dp"
                     android:layout_marginStart="8dp"
-                    android:text="@string/go" />
+                    android:background="@drawable/bg_button_primary"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:text="@string/go"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_primary_text"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/browserBackButton"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_secondary"
+                    android:enabled="false"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:text="@string/browser_back"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_secondary_text"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/browserForwardButton"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_secondary"
+                    android:enabled="false"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:text="@string/browser_forward"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_secondary_text"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/browserReloadButton"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_button_secondary"
+                    android:enabled="false"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:text="@string/browser_reload"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_secondary_text"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/browserDownloadButton"
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="12dp"
-                android:text="@string/download_current_page" />
+                android:layout_height="46dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_button_primary"
+                android:minHeight="0dp"
+                android:text="@string/download_current_page"
+                android:textAllCaps="false"
+                android:textColor="@color/button_primary_text"
+                android:textSize="14sp" />
 
-            <WebView
-                android:id="@+id/browserWebView"
+            <ProgressBar
+                android:id="@+id/browserProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginTop="8dp"
+                android:indeterminate="false"
+                android:max="100"
+                android:progress="0"
+                android:progressBackgroundTint="@color/line"
+                android:progressTint="@color/brand"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/browserErrorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/browser_page_load_error"
+                android:textColor="@color/danger"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="12dp"
-                android:layout_weight="1" />
+                android:layout_marginTop="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_webview_frame"
+                android:padding="1dp">
+
+                <WebView
+                    android:id="@+id/browserWebView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </FrameLayout>
         </LinearLayout>
 
         <FrameLayout
@@ -139,8 +292,11 @@
                 android:id="@+id/downloadsList"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:cacheColorHint="@android:color/transparent"
+                android:clipToPadding="false"
                 android:divider="@android:color/transparent"
-                android:dividerHeight="8dp" />
+                android:dividerHeight="10dp"
+                android:paddingBottom="8dp" />
 
             <TextView
                 android:id="@+id/emptyDownloadsText"
@@ -149,7 +305,7 @@
                 android:layout_gravity="center"
                 android:gravity="center"
                 android:text="@string/empty_downloads"
-                android:textColor="#5F6B75"
+                android:textColor="@color/text_secondary"
                 android:textSize="16sp" />
         </FrameLayout>
     </FrameLayout>

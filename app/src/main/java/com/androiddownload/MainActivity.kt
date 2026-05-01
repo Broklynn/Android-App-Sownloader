@@ -7,6 +7,7 @@ import android.content.DialogInterface
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -37,6 +39,7 @@ import java.io.File
 import java.util.Locale
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -50,10 +53,19 @@ class MainActivity : Activity() {
     private lateinit var downloadsContainer: View
     private lateinit var emptyDownloadsText: TextView
     private lateinit var adapter: DownloadsAdapter
+    private lateinit var homeTabButton: Button
+    private lateinit var downloadsTabButton: Button
+    private lateinit var browserTabButton: Button
     private lateinit var browserUrlInput: EditText
     private lateinit var browserGoButton: Button
+    private lateinit var browserBackButton: Button
+    private lateinit var browserForwardButton: Button
+    private lateinit var browserReloadButton: Button
     private lateinit var browserDownloadButton: Button
+    private lateinit var browserProgressBar: ProgressBar
+    private lateinit var browserErrorText: TextView
     private lateinit var browserWebView: WebView
+    private var browserPageLoading = false
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -73,9 +85,17 @@ class MainActivity : Activity() {
         browserContainer = findViewById(R.id.browserContainer)
         downloadsContainer = findViewById(R.id.downloadsContainer)
         emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
+        homeTabButton = findViewById(R.id.homeTabButton)
+        downloadsTabButton = findViewById(R.id.downloadsTabButton)
+        browserTabButton = findViewById(R.id.browserTabButton)
         browserUrlInput = findViewById(R.id.browserUrlInput)
         browserGoButton = findViewById(R.id.browserGoButton)
+        browserBackButton = findViewById(R.id.browserBackButton)
+        browserForwardButton = findViewById(R.id.browserForwardButton)
+        browserReloadButton = findViewById(R.id.browserReloadButton)
         browserDownloadButton = findViewById(R.id.browserDownloadButton)
+        browserProgressBar = findViewById(R.id.browserProgressBar)
+        browserErrorText = findViewById(R.id.browserErrorText)
         browserWebView = findViewById(R.id.browserWebView)
         setupBrowserWebView()
 
@@ -99,10 +119,28 @@ class MainActivity : Activity() {
         )
         findViewById<ListView>(R.id.downloadsList).adapter = adapter
 
-        findViewById<Button>(R.id.homeTabButton).setOnClickListener { showHome() }
-        findViewById<Button>(R.id.downloadsTabButton).setOnClickListener { showDownloads() }
-        findViewById<Button>(R.id.browserTabButton).setOnClickListener { showBrowser() }
+        homeTabButton.setOnClickListener { showHome() }
+        downloadsTabButton.setOnClickListener { showDownloads() }
+        browserTabButton.setOnClickListener { showBrowser() }
         browserGoButton.setOnClickListener { loadBrowserPage() }
+        browserBackButton.setOnClickListener {
+            if (browserWebView.canGoBack()) {
+                browserWebView.goBack()
+            }
+            updateBrowserNavigationButtons()
+        }
+        browserForwardButton.setOnClickListener {
+            if (browserWebView.canGoForward()) {
+                browserWebView.goForward()
+            }
+            updateBrowserNavigationButtons()
+        }
+        browserReloadButton.setOnClickListener {
+            if (!browserWebView.url.isNullOrBlank() && browserWebView.url != "about:blank") {
+                clearBrowserError()
+                browserWebView.reload()
+            }
+        }
         browserDownloadButton.setOnClickListener { downloadCurrentBrowserPage() }
 
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
@@ -120,6 +158,7 @@ class MainActivity : Activity() {
             }
         }
 
+        showHome()
         handleIntent(intent)
     }
 
@@ -145,18 +184,31 @@ class MainActivity : Activity() {
         homeContainer.visibility = View.VISIBLE
         browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
+        updateSelectedTab(homeTabButton)
     }
 
     private fun showDownloads() {
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
+        updateSelectedTab(downloadsTabButton)
     }
 
     private fun showBrowser() {
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.VISIBLE
         downloadsContainer.visibility = View.GONE
+        updateSelectedTab(browserTabButton)
+    }
+
+    private fun updateSelectedTab(selectedTab: Button) {
+        listOf(homeTabButton, downloadsTabButton, browserTabButton).forEach { tab ->
+            val isSelected = tab == selectedTab
+            tab.isSelected = isSelected
+            tab.setBackgroundResource(
+                if (isSelected) R.drawable.bg_tab_selected else R.drawable.bg_tab_unselected
+            )
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -247,6 +299,7 @@ class MainActivity : Activity() {
             showToast(getString(R.string.invalid_url))
             return
         }
+        clearBrowserError()
         browserWebView.loadUrl(url)
     }
 
@@ -285,13 +338,21 @@ class MainActivity : Activity() {
             javaScriptCanOpenWindowsAutomatically = false
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(browserWebView, false)
-        browserWebView.webChromeClient = object : WebChromeClient() {}
+        browserWebView.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                browserProgressBar.progress = newProgress.coerceIn(0, 100)
+                browserProgressBar.visibility = if (browserPageLoading && newProgress < 100) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
+                }
+            }
+        }
         browserWebView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val target = request?.url?.toString().orEmpty()
                 if (target.isBlank()) return false
-                browserUrlInput.setText(target)
-                browserUrlInput.setSelection(target.length)
+                updateBrowserUrlInput(target)
                 return false
             }
 
@@ -299,19 +360,58 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                 val target = url.orEmpty()
                 if (target.isBlank()) return false
-                browserUrlInput.setText(target)
-                browserUrlInput.setSelection(target.length)
+                updateBrowserUrlInput(target)
                 return false
             }
 
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                browserPageLoading = true
+                clearBrowserError()
+                updateBrowserUrlInput(url)
+                browserProgressBar.progress = 0
+                browserProgressBar.visibility = View.VISIBLE
+                updateBrowserNavigationButtons()
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
-                val target = url.orEmpty()
-                if (target.isNotBlank()) {
-                    browserUrlInput.setText(target)
-                    browserUrlInput.setSelection(target.length)
+                browserPageLoading = false
+                updateBrowserUrlInput(url)
+                browserProgressBar.visibility = View.GONE
+                updateBrowserNavigationButtons()
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    browserPageLoading = false
+                    browserProgressBar.visibility = View.GONE
+                    browserErrorText.text = getString(R.string.browser_page_load_error)
+                    browserErrorText.visibility = View.VISIBLE
+                    updateBrowserNavigationButtons()
                 }
             }
         }
+        updateBrowserNavigationButtons()
+    }
+
+    private fun updateBrowserUrlInput(url: String?) {
+        val target = url.orEmpty()
+        if (target.isBlank()) return
+        browserUrlInput.setText(target)
+        browserUrlInput.setSelection(target.length)
+    }
+
+    private fun clearBrowserError() {
+        browserErrorText.visibility = View.GONE
+    }
+
+    private fun updateBrowserNavigationButtons() {
+        browserBackButton.isEnabled = browserWebView.canGoBack()
+        browserForwardButton.isEnabled = browserWebView.canGoForward()
+        browserReloadButton.isEnabled = browserWebView.url?.let { it.isNotBlank() && it != "about:blank" } == true
     }
 
     override fun onBackPressed() {

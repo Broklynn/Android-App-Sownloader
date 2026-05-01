@@ -1,5 +1,16 @@
 <resources>
-    <color name="brand">#146C94</color>
-    <color name="brand_dark">#0B3D56</color>
-    <color name="surface">#F7F9FB</color>
+    <color name="brand">#2563EB</color>
+    <color name="brand_dark">#1E3A8A</color>
+    <color name="brand_soft">#EAF1FF</color>
+    <color name="surface">#F6F8FB</color>
+    <color name="surface_alt">#FFFFFF</color>
+    <color name="line">#D8DEE8</color>
+    <color name="text_primary">#111827</color>
+    <color name="text_secondary">#526071</color>
+    <color name="text_muted">#7C8794</color>
+    <color name="button_disabled">#E5E9F0</color>
+    <color name="danger">#B42318</color>
+    <color name="danger_soft">#FDECEC</color>
+    <color name="success">#16794C</color>
+    <color name="warning">#A15C07</color>
 </resources>

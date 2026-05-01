@@ -1,15 +1,20 @@
 <resources>
-    <string name="app_name">Android Download</string>
+    <string name="app_name">AIO Downloader Lite</string>
     <string name="home">Home</string>
     <string name="downloads">Downloads</string>
     <string name="browser">Navegador</string>
     <string name="url_hint">Cole uma URL</string>
+    <string name="home_download_help">Cole uma URL direta ou link de video para baixar em MP4 ou MP3.</string>
     <string name="download">Baixar</string>
     <string name="browser_url_hint">Cole a URL da página</string>
     <string name="go">Ir</string>
+    <string name="browser_back">Voltar</string>
+    <string name="browser_forward">Avancar</string>
+    <string name="browser_reload">Recarregar</string>
     <string name="download_current_page">Baixar página atual</string>
     <string name="browser_no_page_loaded">Nenhuma página carregada para baixar.</string>
     <string name="invalid_url">URL invalida. Use http:// ou https://.</string>
+    <string name="browser_page_load_error">Nao foi possivel carregar esta pagina. Verifique a URL ou tente novamente.</string>
     <string name="empty_downloads">Nenhum download ainda.</string>
     <string name="cancel">Cancelar</string>
     <string name="pause">Pausar</string>
@@ -37,4 +42,12 @@
     <string name="ytdlp_quality_mp4_480p">MP4 - 480p</string>
     <string name="ytdlp_quality_mp4_360p">MP4 - 360p</string>
     <string name="ytdlp_quality_mp3">MP3</string>
+    <string name="status_queued">Na fila</string>
+    <string name="status_preparing">Preparando</string>
+    <string name="status_running">Baixando</string>
+    <string name="status_paused">Pausado</string>
+    <string name="status_completed">Concluido</string>
+    <string name="status_failed">Falhou</string>
+    <string name="status_canceled">Cancelado</string>
+    <string name="download_progress_unknown">Calculando</string>
 </resources>
