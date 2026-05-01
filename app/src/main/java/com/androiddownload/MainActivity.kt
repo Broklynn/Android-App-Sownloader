@@ -35,14 +35,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var homeContainer: View
+    private lateinit var browserContainer: View
     private lateinit var downloadsContainer: View
     private lateinit var emptyDownloadsText: TextView
     private lateinit var adapter: DownloadsAdapter
+    private lateinit var browserUrlInput: EditText
+    private lateinit var browserGoButton: Button
+    private lateinit var browserDownloadButton: Button
+    private lateinit var browserWebView: WebView
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -59,8 +70,14 @@ class MainActivity : Activity() {
         )
 
         homeContainer = findViewById(R.id.homeContainer)
+        browserContainer = findViewById(R.id.browserContainer)
         downloadsContainer = findViewById(R.id.downloadsContainer)
         emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
+        browserUrlInput = findViewById(R.id.browserUrlInput)
+        browserGoButton = findViewById(R.id.browserGoButton)
+        browserDownloadButton = findViewById(R.id.browserDownloadButton)
+        browserWebView = findViewById(R.id.browserWebView)
+        setupBrowserWebView()
 
         adapter = DownloadsAdapter(
             context = this,
@@ -84,26 +101,16 @@ class MainActivity : Activity() {
 
         findViewById<Button>(R.id.homeTabButton).setOnClickListener { showHome() }
         findViewById<Button>(R.id.downloadsTabButton).setOnClickListener { showDownloads() }
+        findViewById<Button>(R.id.browserTabButton).setOnClickListener { showBrowser() }
+        browserGoButton.setOnClickListener { loadBrowserPage() }
+        browserDownloadButton.setOnClickListener { downloadCurrentBrowserPage() }
 
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
-            val url = rawUrl.trim()
-            if (!UrlValidator.isValidHttpUrl(url)) {
-                homeController.showError(getString(R.string.invalid_url))
-                return@onDownloadClick
-            }
-
-            if (DownloadSourceClassifier.shouldUseHttpDownloader(url)) {
-                startQueuedDownload(
-                    url = url,
-                    qualitySelector = null,
-                    homeController = homeController
-                )
-            } else {
-                openYtDlpQualityPicker(
-                    url = url,
-                    homeController = homeController
-                )
-            }
+            handleDownloadRequest(
+                rawUrl = rawUrl,
+                onError = homeController::showError,
+                homeController = homeController
+            )
         }
 
         scope.launch {
@@ -123,18 +130,33 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        browserWebView.apply {
+            stopLoading()
+            loadUrl("about:blank")
+            clearHistory()
+            removeAllViews()
+            destroy()
+        }
         scope.cancel()
         super.onDestroy()
     }
 
     private fun showHome() {
         homeContainer.visibility = View.VISIBLE
+        browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
     }
 
     private fun showDownloads() {
         homeContainer.visibility = View.GONE
+        browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
+    }
+
+    private fun showBrowser() {
+        homeContainer.visibility = View.GONE
+        browserContainer.visibility = View.VISIBLE
+        downloadsContainer.visibility = View.GONE
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -145,9 +167,9 @@ class MainActivity : Activity() {
 
     private fun openYtDlpQualityPicker(
         url: String,
-        homeController: HomeController
+        homeController: HomeController? = null
     ) {
-        homeController.setLoading(true)
+        homeController?.setLoading(true)
         scope.launch {
             val videoInfo = withContext(Dispatchers.IO) {
                 runCatching { YoutubeDL.getInstance().getInfo(url) }.getOrNull()
@@ -166,7 +188,7 @@ class MainActivity : Activity() {
                     )
                 }
                 .setOnCancelListener {
-                    homeController.setLoading(false)
+                    homeController?.setLoading(false)
                 }
                 .show()
         }
@@ -175,18 +197,129 @@ class MainActivity : Activity() {
     private fun startQueuedDownload(
         url: String,
         qualitySelector: String?,
-        homeController: HomeController
+        homeController: HomeController? = null
     ) {
-        homeController.setLoading(true)
+        homeController?.setLoading(true)
         scope.launch {
             val downloadId = withContext(Dispatchers.IO) {
                 app.container.queue.enqueue(url, qualitySelector)
             }
-            homeController.clear()
-            homeController.setLoading(false)
+            homeController?.clear()
+            homeController?.setLoading(false)
             showDownloads()
             DownloadForegroundService.start(this@MainActivity, downloadId)
         }
+    }
+
+    private fun handleDownloadRequest(
+        rawUrl: String,
+        homeController: HomeController? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
+        val url = rawUrl.trim()
+        if (!UrlValidator.isValidHttpUrl(url)) {
+            val message = getString(R.string.invalid_url)
+            if (homeController != null) {
+                homeController.showError(message)
+            } else {
+                onError?.invoke(message) ?: showToast(message)
+            }
+            return
+        }
+
+        if (DownloadSourceClassifier.shouldUseHttpDownloader(url)) {
+            startQueuedDownload(
+                url = url,
+                qualitySelector = null,
+                homeController = homeController
+            )
+        } else {
+            openYtDlpQualityPicker(
+                url = url,
+                homeController = homeController
+            )
+        }
+    }
+
+    private fun loadBrowserPage() {
+        val url = normalizeBrowserUrl(browserUrlInput.text?.toString())
+        if (url == null) {
+            showToast(getString(R.string.invalid_url))
+            return
+        }
+        browserWebView.loadUrl(url)
+    }
+
+    private fun downloadCurrentBrowserPage() {
+        val currentUrl = browserWebView.url?.takeIf { it.isNotBlank() && it != "about:blank" }
+            ?: normalizeBrowserUrl(browserUrlInput.text?.toString())
+        if (currentUrl == null) {
+            showToast(getString(R.string.browser_no_page_loaded))
+            return
+        }
+        handleDownloadRequest(
+            rawUrl = currentUrl,
+            onError = { showToast(it) }
+        )
+    }
+
+    private fun normalizeBrowserUrl(rawUrl: String?): String? {
+        val value = rawUrl?.trim().orEmpty()
+        if (value.isBlank()) return null
+        val normalized = if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
+            value
+        } else {
+            "https://$value"
+        }
+        return normalized.takeIf { UrlValidator.isValidHttpUrl(it) }
+    }
+
+    private fun setupBrowserWebView() {
+        CookieManager.getInstance().setAcceptCookie(false)
+        browserWebView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            javaScriptCanOpenWindowsAutomatically = false
+        }
+        CookieManager.getInstance().setAcceptThirdPartyCookies(browserWebView, false)
+        browserWebView.webChromeClient = object : WebChromeClient() {}
+        browserWebView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val target = request?.url?.toString().orEmpty()
+                if (target.isBlank()) return false
+                browserUrlInput.setText(target)
+                browserUrlInput.setSelection(target.length)
+                return false
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                val target = url.orEmpty()
+                if (target.isBlank()) return false
+                browserUrlInput.setText(target)
+                browserUrlInput.setSelection(target.length)
+                return false
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val target = url.orEmpty()
+                if (target.isNotBlank()) {
+                    browserUrlInput.setText(target)
+                    browserUrlInput.setSelection(target.length)
+                }
+            }
+        }
+    }
+
+    override fun onBackPressed() {
+        if (browserContainer.visibility == View.VISIBLE && browserWebView.canGoBack()) {
+            browserWebView.goBack()
+            return
+        }
+        super.onBackPressed()
     }
 
     private fun openCompletedDownload(download: DownloadEntity) {
