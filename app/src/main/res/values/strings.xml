@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Android Download</string>
+    <string name="home">Home</string>
+    <string name="downloads">Downloads</string>
+    <string name="url_hint">Cole uma URL direta</string>
+    <string name="download">Baixar</string>
+    <string name="invalid_url">URL invalida. Use http:// ou https://.</string>
+    <string name="empty_downloads">Nenhum download ainda.</string>
+    <string name="cancel">Cancelar</string>
+</resources>
