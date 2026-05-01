@@ -65,6 +65,26 @@
             android:textSize="13sp" />
 
         <Button
+            android:id="@+id/actionButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginEnd="8dp"
+            android:enabled="false"
+            android:minWidth="88dp"
+            android:text="@string/pause"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/openButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginEnd="8dp"
+            android:enabled="false"
+            android:minWidth="88dp"
+            android:text="@string/open"
+            android:visibility="gone" />
+
+        <Button
             android:id="@+id/cancelButton"
             android:layout_width="wrap_content"
             android:layout_height="40dp"

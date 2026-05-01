@@ -7,4 +7,21 @@
     <string name="invalid_url">URL invalida. Use http:// ou https://.</string>
     <string name="empty_downloads">Nenhum download ainda.</string>
     <string name="cancel">Cancelar</string>
+    <string name="pause">Pausar</string>
+    <string name="resume">Retomar</string>
+    <string name="retry">Tentar novamente</string>
+    <string name="open">Abrir</string>
+    <string name="open_file_chooser">Abrir arquivo</string>
+    <string name="download_file_not_found">Arquivo baixado nao foi encontrado.</string>
+    <string name="download_no_app_found">Nenhum app instalado para abrir este arquivo.</string>
+    <string name="download_open_error">Nao foi possivel abrir este arquivo.</string>
+    <string name="download_resume_not_supported">Este servidor nao suporta retomada deste download.</string>
+    <string name="download_no_internet">Sem internet. Verifique sua conexão e tente novamente.</string>
+    <string name="download_connection_interrupted">A conexão foi interrompida durante o download.</string>
+    <string name="download_invalid_url">URL invalida para download.</string>
+    <string name="download_http_error">O servidor retornou um erro HTTP.</string>
+    <string name="download_not_found_404">Arquivo nao encontrado no servidor (404).</string>
+    <string name="download_save_error">Nao foi possivel salvar o arquivo baixado.</string>
+    <string name="download_no_space">Espaço insuficiente no dispositivo.</string>
+    <string name="download_missing_content_length">O servidor nao informou o tamanho do arquivo.</string>
 </resources>

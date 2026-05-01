@@ -61,4 +61,23 @@ class DownloadRepository(
             )
         )
     }
+
+    suspend fun markPaused(id: Long) {
+        val current = dao.getById(id) ?: return
+        if (current.status == DownloadStatus.COMPLETED ||
+            current.status == DownloadStatus.FAILED ||
+            current.status == DownloadStatus.CANCELED ||
+            current.status == DownloadStatus.PAUSED
+        ) {
+            return
+        }
+
+        dao.update(
+            current.copy(
+                status = DownloadStatus.PAUSED,
+                errorMessage = null,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
 }

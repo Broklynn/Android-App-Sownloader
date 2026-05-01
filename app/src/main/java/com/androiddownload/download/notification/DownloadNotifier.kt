@@ -3,10 +3,13 @@ package com.androiddownload.download.notification
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
+import com.androiddownload.MainActivity
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -36,6 +39,7 @@ class DownloadNotifier(
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Preparando download")
+            .setContentIntent(downloadsPendingIntent())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(100, 0, true)
@@ -52,10 +56,24 @@ class DownloadNotifier(
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(download.fileName)
             .setContentText(download.status.name)
+            .setContentIntent(downloadsPendingIntent())
+            .setAutoCancel(!running)
             .setOngoing(running)
             .setOnlyAlertOnce(true)
             .setProgress(100, download.progress, download.totalBytes <= 0 && running)
             .build()
+    }
+
+    private fun downloadsPendingIntent(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_OPEN_DOWNLOADS, true)
+        return PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     fun notify(notificationId: Int, notification: Notification) {

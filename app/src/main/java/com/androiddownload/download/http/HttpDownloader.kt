@@ -4,21 +4,39 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.os.SystemClock
+import com.androiddownload.R
+import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.download.data.DownloadRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
+import java.io.EOFException
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.MalformedURLException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
+
+enum class DownloadMode {
+    NORMAL,
+    RESUME,
+    RETRY
+}
 
 class HttpDownloader(
     private val context: Context,
@@ -27,52 +45,197 @@ class HttpDownloader(
 ) {
     private val activeCalls = ConcurrentHashMap<Long, Call>()
     private val cancelRequests = ConcurrentHashMap.newKeySet<Long>()
+    private val pauseRequests = ConcurrentHashMap.newKeySet<Long>()
 
-    suspend fun download(downloadId: Long, onProgress: suspend () -> Unit = {}) {
+    suspend fun download(
+        downloadId: Long,
+        mode: DownloadMode = DownloadMode.NORMAL,
+        onProgress: suspend () -> Unit = {}
+    ) {
+        var lastFailure: DownloadFailure? = null
+
         try {
-            val queued = repository.getById(downloadId) ?: return
-            if (queued.status == DownloadStatus.CANCELED ||
-                queued.status == DownloadStatus.COMPLETED ||
-                queued.status == DownloadStatus.FAILED
-            ) {
-                return
-            }
-
-            repository.updateStatus(downloadId, DownloadStatus.PREPARING)
-
-            val request = Request.Builder()
-                .url(queued.sourceUrl)
-                .get()
-                .build()
-
-            val call = client.newCall(request)
-            activeCalls[downloadId] = call
-
-            call.execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("HTTP ${response.code}")
+            for (attempt in 1..MAX_ATTEMPTS) {
+                val current = repository.getById(downloadId) ?: return
+                if (current.status == DownloadStatus.CANCELED ||
+                    current.status == DownloadStatus.COMPLETED
+                ) {
+                    return
                 }
 
-                val body = response.body ?: throw IOException("Resposta sem corpo")
-                val mimeType = body.contentType()?.toString()
-                val fileName = FileNameUtils.guessFileName(
-                    url = response.request.url.toString(),
-                    contentDisposition = response.header("Content-Disposition"),
-                    mimeType = mimeType
+                if (current.status == DownloadStatus.FAILED && mode != DownloadMode.RETRY) {
+                    return
+                }
+
+                try {
+                    performAttempt(
+                        downloadId = downloadId,
+                        current = current,
+                        mode = mode,
+                        forceFromZero = false,
+                        onProgress = onProgress
+                    )
+                    return
+                } catch (exception: DownloadFailureException) {
+                    lastFailure = exception.failure
+                    if (!exception.failure.retryable || attempt >= MAX_ATTEMPTS || isUserCanceledOrPaused(downloadId)) {
+                        break
+                    }
+                    delay(RETRY_BACKOFF_MS * attempt)
+                }
+            }
+
+            if (lastFailure != null && !isUserCanceledOrPaused(downloadId)) {
+                repository.updateStatus(downloadId, DownloadStatus.FAILED, lastFailure.message)
+            }
+        } catch (exception: CancellationException) {
+            withContext(NonCancellable) {
+                if (cancelRequests.contains(downloadId)) {
+                    handleCanceled(downloadId)
+                } else if (pauseRequests.contains(downloadId)) {
+                    handlePaused(downloadId)
+                }
+            }
+            throw exception
+        } finally {
+            activeCalls.remove(downloadId)
+            cancelRequests.remove(downloadId)
+            pauseRequests.remove(downloadId)
+        }
+    }
+
+    fun cancel(downloadId: Long) {
+        cancelRequests.add(downloadId)
+        activeCalls[downloadId]?.cancel()
+    }
+
+    fun pause(downloadId: Long) {
+        pauseRequests.add(downloadId)
+        activeCalls[downloadId]?.cancel()
+    }
+
+    private suspend fun performAttempt(
+        downloadId: Long,
+        current: DownloadEntity,
+        mode: DownloadMode,
+        forceFromZero: Boolean,
+        onProgress: suspend () -> Unit
+    ) {
+        repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+
+        val tempFile = createTempFile(downloadId)
+        var resumeOffset = when {
+            forceFromZero -> 0L
+            mode == DownloadMode.RESUME && current.status == DownloadStatus.PAUSED && tempFile.exists() -> {
+                current.downloadedBytes.coerceAtLeast(0)
+            }
+            mode == DownloadMode.RETRY && tempFile.exists() && current.downloadedBytes > 0L -> {
+                current.downloadedBytes.coerceAtLeast(0)
+            }
+            else -> 0L
+        }
+
+        val requestBuilder = Request.Builder()
+            .url(current.sourceUrl)
+            .get()
+
+        if (resumeOffset > 0L) {
+            requestBuilder.header("Range", "bytes=$resumeOffset-")
+        }
+
+        val call = client.newCall(requestBuilder.build())
+        activeCalls[downloadId] = call
+
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    handleHttpError(response.code)
+                }
+
+                if (resumeOffset > 0L && response.code != 206) {
+                    if (mode == DownloadMode.RETRY && !forceFromZero) {
+                        deleteTempFile(downloadId)
+                        performAttempt(
+                            downloadId = downloadId,
+                            current = current.copy(downloadedBytes = 0, tempPath = null),
+                            mode = DownloadMode.NORMAL,
+                            forceFromZero = true,
+                            onProgress = onProgress
+                        )
+                        return
+                    }
+                    throw DownloadFailureException(
+                        DownloadFailure(
+                            message = context.getString(R.string.download_resume_not_supported),
+                            retryable = false
+                        )
+                    )
+                }
+
+                val body = response.body ?: throw DownloadFailureException(
+                    DownloadFailure(
+                        message = context.getString(R.string.download_http_error),
+                        retryable = true
+                    )
                 )
-                val totalBytes = body.contentLength()
-                val tempFile = createTempFile(downloadId)
-                val finalFile = createFinalFile(fileName)
+
+                val contentRange = response.header("Content-Range")
+                val contentLength = body.contentLength()
+                val totalBytes = resolveTotalBytes(
+                    responseCode = response.code,
+                    contentRange = contentRange,
+                    resumeOffset = resumeOffset,
+                    fallback = current.totalBytes,
+                    bodyLength = contentLength
+                ) ?: throw DownloadFailureException(
+                    DownloadFailure(
+                        message = context.getString(R.string.download_missing_content_length),
+                        retryable = false
+                    )
+                )
+
+                if (resumeOffset > 0L) {
+                    val contentRangeStart = parseContentRangeStart(contentRange)
+                    if (contentRangeStart != null && contentRangeStart != resumeOffset) {
+                        if (mode == DownloadMode.RETRY && !forceFromZero) {
+                            deleteTempFile(downloadId)
+                            performAttempt(
+                                downloadId = downloadId,
+                                current = current.copy(downloadedBytes = 0, tempPath = null),
+                                mode = DownloadMode.NORMAL,
+                                forceFromZero = true,
+                                onProgress = onProgress
+                            )
+                            return
+                        }
+                        throw DownloadFailureException(
+                            DownloadFailure(
+                                message = context.getString(R.string.download_resume_not_supported),
+                                retryable = false
+                            )
+                        )
+                    }
+                }
+
+                val mimeType = body.contentType()?.toString() ?: current.mimeType
+                val fileName = current.fileName.ifBlank {
+                    FileNameUtils.guessFileName(
+                        url = response.request.url.toString(),
+                        contentDisposition = response.header("Content-Disposition"),
+                        mimeType = mimeType
+                    )
+                }
+                val finalFile = resolveFinalFile(fileName, resumeOffset > 0L)
 
                 repository.update(
-                    queued.copy(
+                    current.copy(
                         finalUrl = response.request.url.toString(),
                         fileName = finalFile.name,
                         mimeType = mimeType,
                         tempPath = tempFile.absolutePath,
                         totalBytes = totalBytes,
-                        downloadedBytes = 0,
-                        progress = 0,
+                        downloadedBytes = resumeOffset,
+                        progress = calculateProgress(resumeOffset, totalBytes),
                         speed = 0,
                         status = DownloadStatus.RUNNING,
                         errorMessage = null
@@ -80,27 +243,30 @@ class HttpDownloader(
                 )
                 onProgress()
 
-                var downloadedBytes = 0L
+                var sessionDownloadedBytes = 0L
                 val startedAt = SystemClock.elapsedRealtime()
                 var lastUpdateAt = 0L
 
                 body.byteStream().use { input ->
-                    FileOutputStream(tempFile).use { output ->
+                    FileOutputStream(tempFile, resumeOffset > 0L).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             throwIfCancelRequested(downloadId)
+                            throwIfPauseRequested(downloadId)
                             val read = input.read(buffer)
                             if (read == -1) break
                             throwIfCancelRequested(downloadId)
+                            throwIfPauseRequested(downloadId)
 
                             output.write(buffer, 0, read)
-                            downloadedBytes += read
+                            sessionDownloadedBytes += read
 
+                            val downloadedBytes = resumeOffset + sessionDownloadedBytes
                             val now = SystemClock.elapsedRealtime()
                             if (now - lastUpdateAt >= PROGRESS_INTERVAL_MS || downloadedBytes == totalBytes) {
                                 repository.update(
-                                    queued.copy(
+                                    current.copy(
                                         finalUrl = response.request.url.toString(),
                                         fileName = finalFile.name,
                                         mimeType = mimeType,
@@ -108,7 +274,7 @@ class HttpDownloader(
                                         totalBytes = totalBytes,
                                         downloadedBytes = downloadedBytes,
                                         progress = calculateProgress(downloadedBytes, totalBytes),
-                                        speed = calculateSpeed(downloadedBytes, startedAt, now),
+                                        speed = calculateSpeed(sessionDownloadedBytes, startedAt, now),
                                         status = DownloadStatus.RUNNING,
                                         errorMessage = null
                                     )
@@ -121,9 +287,12 @@ class HttpDownloader(
                 }
 
                 throwIfCancelRequested(downloadId)
+                throwIfPauseRequested(downloadId)
+
+                val downloadedBytes = resumeOffset + sessionDownloadedBytes
                 moveTempToFinal(tempFile, finalFile)
                 repository.update(
-                    queued.copy(
+                    current.copy(
                         finalUrl = response.request.url.toString(),
                         fileName = finalFile.name,
                         mimeType = mimeType,
@@ -140,27 +309,112 @@ class HttpDownloader(
                 onProgress()
             }
         } catch (exception: CancellationException) {
-            withContext(NonCancellable) {
-                handleCanceled(downloadId)
-            }
             throw exception
-        } catch (exception: Exception) {
-            if (cancelRequests.contains(downloadId)) {
-                withContext(NonCancellable) {
-                    handleCanceled(downloadId)
-                }
-            } else {
-                repository.updateStatus(downloadId, DownloadStatus.FAILED, exception.message)
-            }
+        } catch (exception: DownloadFailureException) {
+            throw exception
+        } catch (exception: IllegalArgumentException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_invalid_url),
+                    retryable = false
+                )
+            )
+        } catch (exception: UnknownHostException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_no_internet),
+                    retryable = true
+                )
+            )
+        } catch (exception: ConnectException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_connection_interrupted),
+                    retryable = true
+                )
+            )
+        } catch (exception: NoRouteToHostException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_no_internet),
+                    retryable = true
+                )
+            )
+        } catch (exception: SocketTimeoutException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_connection_interrupted),
+                    retryable = true
+                )
+            )
+        } catch (exception: InterruptedIOException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_connection_interrupted),
+                    retryable = true
+                )
+            )
+        } catch (exception: FileNotFoundException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_save_error),
+                    retryable = false
+                )
+            )
+        } catch (exception: SecurityException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_save_error),
+                    retryable = false
+                )
+            )
+        } catch (exception: IOException) {
+            throw DownloadFailureException(mapIoFailure(exception))
         } finally {
             activeCalls.remove(downloadId)
-            cancelRequests.remove(downloadId)
         }
     }
 
-    fun cancel(downloadId: Long) {
-        cancelRequests.add(downloadId)
-        activeCalls[downloadId]?.cancel()
+    private fun mapIoFailure(exception: IOException): DownloadFailure {
+        val message = exception.message.orEmpty()
+        return when {
+            isNoSpaceError(message) -> DownloadFailure(
+                message = context.getString(R.string.download_no_space),
+                retryable = false
+            )
+            isSaveErrorMessage(message) -> DownloadFailure(
+                message = context.getString(R.string.download_save_error),
+                retryable = false
+            )
+            isNetworkIoMessage(message) || exception is EOFException -> DownloadFailure(
+                message = context.getString(R.string.download_connection_interrupted),
+                retryable = true
+            )
+            message.contains("HTTP 5") -> DownloadFailure(
+                message = "${context.getString(R.string.download_http_error)} ${extractHttpCode(message)}",
+                retryable = true
+            )
+            message.contains("HTTP") -> DownloadFailure(
+                message = "${context.getString(R.string.download_http_error)} ${extractHttpCode(message)}",
+                retryable = false
+            )
+            else -> DownloadFailure(
+                message = context.getString(R.string.download_save_error),
+                retryable = false
+            )
+        }
+    }
+
+    private fun handleHttpError(code: Int): Nothing {
+        throw DownloadFailureException(
+            DownloadFailure(
+                message = when (code) {
+                    404 -> context.getString(R.string.download_not_found_404)
+                    else -> "${context.getString(R.string.download_http_error)} $code"
+                },
+                retryable = code >= 500 || code == 408 || code == 429
+            )
+        )
     }
 
     private fun createTempFile(downloadId: Long): File {
@@ -207,6 +461,10 @@ class HttpDownloader(
         repository.markCanceled(downloadId)
     }
 
+    private suspend fun handlePaused(downloadId: Long) {
+        repository.markPaused(downloadId)
+    }
+
     private fun deleteTempFile(downloadId: Long) {
         val tempFile = createTempFile(downloadId)
         if (tempFile.exists()) {
@@ -214,10 +472,88 @@ class HttpDownloader(
         }
     }
 
+    private fun resolveFinalFile(fileName: String, preserveName: Boolean): File {
+        val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: File(context.filesDir, "downloads")
+        directory.mkdirs()
+
+        val cleanName = FileNameUtils.sanitize(fileName)
+        if (preserveName) {
+            return File(directory, cleanName)
+        }
+
+        val name = cleanName.substringBeforeLast('.', cleanName)
+        val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
+        var candidate = File(directory, cleanName)
+        var index = 1
+        while (candidate.exists()) {
+            val nextName = if (extension.isBlank()) {
+                "$name ($index)"
+            } else {
+                "$name ($index).$extension"
+            }
+            candidate = File(directory, nextName)
+            index++
+        }
+        return candidate
+    }
+
+    private fun resolveTotalBytes(
+        responseCode: Int,
+        contentRange: String?,
+        resumeOffset: Long,
+        fallback: Long,
+        bodyLength: Long
+    ): Long? {
+        if (responseCode == 206) {
+            val parsedTotal = parseContentRangeTotal(contentRange)
+            if (parsedTotal != null) {
+                return parsedTotal
+            }
+            if (bodyLength >= 0) {
+                return resumeOffset + bodyLength
+            }
+            return null
+        }
+
+        if (bodyLength >= 0) {
+            return bodyLength
+        }
+
+        if (fallback > 0L) {
+            return fallback
+        }
+
+        return null
+    }
+
+    private fun parseContentRangeTotal(contentRange: String?): Long? {
+        if (contentRange.isNullOrBlank()) return null
+        val match = CONTENT_RANGE_REGEX.find(contentRange.trim()) ?: return null
+        val totalPart = match.groupValues[3]
+        return totalPart.takeIf { it != "*" }?.toLongOrNull()
+    }
+
+    private fun parseContentRangeStart(contentRange: String?): Long? {
+        if (contentRange.isNullOrBlank()) return null
+        val match = CONTENT_RANGE_REGEX.find(contentRange.trim()) ?: return null
+        return match.groupValues[1].toLongOrNull()
+    }
+
     private fun throwIfCancelRequested(downloadId: Long) {
         if (cancelRequests.contains(downloadId)) {
             throw CancellationException("Download cancelado")
         }
+    }
+
+    private fun throwIfPauseRequested(downloadId: Long) {
+        if (pauseRequests.contains(downloadId) && !cancelRequests.contains(downloadId)) {
+            throw CancellationException("Download pausado")
+        }
+    }
+
+    private fun isUserCanceledOrPaused(downloadId: Long): Boolean {
+        return cancelRequests.contains(downloadId) || pauseRequests.contains(downloadId)
     }
 
     private fun calculateProgress(downloadedBytes: Long, totalBytes: Long): Int {
@@ -230,7 +566,51 @@ class HttpDownloader(
         return (downloadedBytes * 1000) / elapsedMs
     }
 
+    private fun isNoSpaceError(message: String): Boolean {
+        return message.contains("ENOSPC", ignoreCase = true) ||
+            message.contains("No space left on device", ignoreCase = true) ||
+            message.contains("space", ignoreCase = true) && message.contains("left", ignoreCase = true)
+    }
+
+    private fun isSaveErrorMessage(message: String): Boolean {
+        return message.contains("permission", ignoreCase = true) ||
+            message.contains("denied", ignoreCase = true) ||
+            message.contains("read-only", ignoreCase = true) ||
+            message.contains("read only", ignoreCase = true) ||
+            message.contains("file not found", ignoreCase = true) ||
+            message.contains("no such file", ignoreCase = true) ||
+            message.contains("directory", ignoreCase = true) && message.contains("exist", ignoreCase = true) ||
+            message.contains("cannot create", ignoreCase = true) ||
+            message.contains("unable to create", ignoreCase = true)
+    }
+
+    private fun isNetworkIoMessage(message: String): Boolean {
+        return message.contains("connection", ignoreCase = true) ||
+            message.contains("reset", ignoreCase = true) ||
+            message.contains("broken pipe", ignoreCase = true) ||
+            message.contains("unexpected end of stream", ignoreCase = true) ||
+            message.contains("stream closed", ignoreCase = true) ||
+            message.contains("timed out", ignoreCase = true) ||
+            message.contains("timeout", ignoreCase = true)
+    }
+
+    private fun extractHttpCode(message: String): String {
+        val match = HTTP_CODE_REGEX.find(message)
+        return match?.groupValues?.getOrNull(1).orEmpty()
+    }
+
     private companion object {
         const val PROGRESS_INTERVAL_MS = 500L
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_BACKOFF_MS = 600L
+        val CONTENT_RANGE_REGEX = Regex("""bytes\s+(\d+)-(\d+|\*)/(\d+|\*)""")
+        val HTTP_CODE_REGEX = Regex("""HTTP\s+(\d{3})""")
     }
+
+    private data class DownloadFailure(
+        val message: String,
+        val retryable: Boolean
+    )
+
+    private class DownloadFailureException(val failure: DownloadFailure) : IOException(failure.message)
 }
