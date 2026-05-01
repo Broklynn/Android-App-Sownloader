@@ -2,7 +2,7 @@
     <string name="app_name">Android Download</string>
     <string name="home">Home</string>
     <string name="downloads">Downloads</string>
-    <string name="url_hint">Cole uma URL direta</string>
+    <string name="url_hint">Cole uma URL</string>
     <string name="download">Baixar</string>
     <string name="invalid_url">URL invalida. Use http:// ou https://.</string>
     <string name="empty_downloads">Nenhum download ainda.</string>
@@ -24,4 +24,5 @@
     <string name="download_save_error">Nao foi possivel salvar o arquivo baixado.</string>
     <string name="download_no_space">Espaço insuficiente no dispositivo.</string>
     <string name="download_missing_content_length">O servidor nao informou o tamanho do arquivo.</string>
+    <string name="download_ytdlp_error">Nao foi possivel baixar este link com yt-dlp.</string>
 </resources>

@@ -218,13 +218,11 @@ class HttpDownloader(
                 }
 
                 val mimeType = body.contentType()?.toString() ?: current.mimeType
-                val fileName = current.fileName.ifBlank {
-                    FileNameUtils.guessFileName(
-                        url = response.request.url.toString(),
-                        contentDisposition = response.header("Content-Disposition"),
-                        mimeType = mimeType
-                    )
-                }
+                val fileName = resolveDownloadFileName(
+                    url = response.request.url.toString(),
+                    contentDisposition = response.header("Content-Disposition"),
+                    mimeType = mimeType
+                )
                 val finalFile = resolveFinalFile(fileName, resumeOffset > 0L)
 
                 repository.update(
@@ -443,6 +441,20 @@ class HttpDownloader(
             index++
         }
         return candidate
+    }
+
+    private fun resolveDownloadFileName(
+        url: String,
+        contentDisposition: String?,
+        mimeType: String?
+    ): String {
+        val fromDisposition = contentDisposition
+            ?.takeIf { it.isNotBlank() }
+            ?.let { FileNameUtils.guessFileName(url, it, mimeType) }
+
+        val fromUrl = FileNameUtils.guessFileName(url, null, null)
+        val preferred = fromDisposition ?: fromUrl
+        return FileNameUtils.ensureExtension(preferred, mimeType)
     }
 
     private fun moveTempToFinal(tempFile: File, finalFile: File) {

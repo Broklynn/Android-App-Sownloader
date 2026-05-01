@@ -11,6 +11,7 @@ import android.widget.TextView
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
 
 class DownloadsAdapter(
@@ -126,14 +127,24 @@ class DownloadsAdapter(
 
         private fun actionConfig(download: DownloadEntity): Pair<String, ((DownloadEntity) -> Unit)>? {
             return when (download.status) {
-                DownloadStatus.RUNNING -> Pair(
-                    actionButton.context.getString(R.string.pause),
-                    onPauseClick
-                )
-                DownloadStatus.PAUSED -> Pair(
-                    actionButton.context.getString(R.string.resume),
-                    onResumeClick
-                )
+                DownloadStatus.RUNNING ->
+                    if (DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
+                        Pair(
+                            actionButton.context.getString(R.string.pause),
+                            onPauseClick
+                        )
+                    } else {
+                        null
+                    }
+                DownloadStatus.PAUSED ->
+                    if (DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
+                        Pair(
+                            actionButton.context.getString(R.string.resume),
+                            onResumeClick
+                        )
+                    } else {
+                        null
+                    }
                 DownloadStatus.FAILED -> Pair(
                     actionButton.context.getString(R.string.retry),
                     onRetryClick

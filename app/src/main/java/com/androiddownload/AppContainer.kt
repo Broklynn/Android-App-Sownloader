@@ -7,6 +7,7 @@ import com.androiddownload.download.data.DownloadRepository
 import com.androiddownload.download.http.HttpDownloader
 import com.androiddownload.download.notification.DownloadNotifier
 import com.androiddownload.download.queue.DownloadQueue
+import com.androiddownload.download.ytdlp.YtDlpDownloader
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -33,6 +34,11 @@ class AppContainer(context: Context) {
     val downloader: HttpDownloader = HttpDownloader(
         context = appContext,
         client = okHttpClient,
+        repository = repository
+    )
+
+    val ytDlpDownloader: YtDlpDownloader = YtDlpDownloader(
+        context = appContext,
         repository = repository
     )
 

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.IBinder
 import com.androiddownload.AndroidDownloadApp
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.download.http.DownloadMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -64,12 +65,25 @@ class DownloadForegroundService : Service() {
 
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                app.container.downloader.download(downloadId, mode) {
-                    val download = app.container.repository.getById(downloadId) ?: return@download
-                    app.container.notifier.notify(
-                        FOREGROUND_NOTIFICATION_ID,
-                        app.container.notifier.buildProgress(download)
-                    )
+                val download = app.container.repository.getById(downloadId) ?: return@launch
+                if (DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
+                    app.container.downloader.download(downloadId, mode) {
+                        app.container.repository.getById(downloadId)?.let { current ->
+                            app.container.notifier.notify(
+                                FOREGROUND_NOTIFICATION_ID,
+                                app.container.notifier.buildProgress(current)
+                            )
+                        }
+                    }
+                } else {
+                    app.container.ytDlpDownloader.download(downloadId) {
+                        app.container.repository.getById(downloadId)?.let { current ->
+                            app.container.notifier.notify(
+                                FOREGROUND_NOTIFICATION_ID,
+                                app.container.notifier.buildProgress(current)
+                            )
+                        }
+                    }
                 }
             } finally {
                 withContext(NonCancellable) {
@@ -89,6 +103,7 @@ class DownloadForegroundService : Service() {
 
     private fun cancelDownload(downloadId: Long) {
         app.container.downloader.cancel(downloadId)
+        app.container.ytDlpDownloader.cancel(downloadId)
         runningJobs.remove(downloadId)?.cancel()
 
         scope.launch {
