@@ -25,4 +25,12 @@
     <string name="download_no_space">Espaço insuficiente no dispositivo.</string>
     <string name="download_missing_content_length">O servidor nao informou o tamanho do arquivo.</string>
     <string name="download_ytdlp_error">Nao foi possivel baixar este link com yt-dlp.</string>
+    <string name="download_audio_error">Nao foi possivel baixar o audio deste video. Tente outra qualidade ou tente atualizar o yt-dlp.</string>
+    <string name="download_mp3_error">Nao foi possivel converter para MP3. Verifique o ffmpeg ou tente baixar o audio original.</string>
+    <string name="ytdlp_quality_best">Melhor qualidade</string>
+    <string name="ytdlp_quality_720p">720p</string>
+    <string name="ytdlp_quality_480p">480p</string>
+    <string name="ytdlp_quality_360p">360p</string>
+    <string name="ytdlp_quality_audio_original">Audio original</string>
+    <string name="ytdlp_quality_mp3">MP3</string>
 </resources>

@@ -2,6 +2,8 @@ package com.androiddownload
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.DialogInterface
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -17,10 +19,13 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.UrlValidator
+import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsAdapter
 import com.androiddownload.ui.home.HomeController
+import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +43,8 @@ class MainActivity : Activity() {
     private lateinit var downloadsContainer: View
     private lateinit var emptyDownloadsText: TextView
     private lateinit var adapter: DownloadsAdapter
+    private val app: AndroidDownloadApp
+        get() = application as AndroidDownloadApp
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,15 +92,17 @@ class MainActivity : Activity() {
                 return@onDownloadClick
             }
 
-            homeController.setLoading(true)
-            scope.launch {
-                val downloadId = withContext(Dispatchers.IO) {
-                    app.container.queue.enqueue(url)
-                }
-                homeController.clear()
-                homeController.setLoading(false)
-                showDownloads()
-                DownloadForegroundService.start(this@MainActivity, downloadId)
+            if (DownloadSourceClassifier.shouldUseHttpDownloader(url)) {
+                startQueuedDownload(
+                    url = url,
+                    qualitySelector = null,
+                    homeController = homeController
+                )
+            } else {
+                openYtDlpQualityPicker(
+                    url = url,
+                    homeController = homeController
+                )
             }
         }
 
@@ -131,6 +140,52 @@ class MainActivity : Activity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true) {
             showDownloads()
+        }
+    }
+
+    private fun openYtDlpQualityPicker(
+        url: String,
+        homeController: HomeController
+    ) {
+        homeController.setLoading(true)
+        scope.launch {
+            val videoInfo = withContext(Dispatchers.IO) {
+                runCatching { YoutubeDL.getInstance().getInfo(url) }.getOrNull()
+            }
+            val options = YtDlpQualityOptions.build(this@MainActivity, videoInfo)
+            val dialogTitle = YtDlpQualityOptions.displayTitle(videoInfo)
+
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle(dialogTitle)
+                .setItems(options.map { it.label }.toTypedArray()) { dialog: DialogInterface, which: Int ->
+                    dialog.dismiss()
+                    startQueuedDownload(
+                        url = url,
+                        qualitySelector = options[which].formatSelector,
+                        homeController = homeController
+                    )
+                }
+                .setOnCancelListener {
+                    homeController.setLoading(false)
+                }
+                .show()
+        }
+    }
+
+    private fun startQueuedDownload(
+        url: String,
+        qualitySelector: String?,
+        homeController: HomeController
+    ) {
+        homeController.setLoading(true)
+        scope.launch {
+            val downloadId = withContext(Dispatchers.IO) {
+                app.container.queue.enqueue(url, qualitySelector)
+            }
+            homeController.clear()
+            homeController.setLoading(false)
+            showDownloads()
+            DownloadForegroundService.start(this@MainActivity, downloadId)
         }
     }
 

@@ -76,7 +76,10 @@ class DownloadForegroundService : Service() {
                         }
                     }
                 } else {
-                    app.container.ytDlpDownloader.download(downloadId) {
+                    app.container.ytDlpDownloader.download(
+                        downloadId = downloadId,
+                        formatSelector = download.qualitySelector ?: "best"
+                    ) {
                         app.container.repository.getById(downloadId)?.let { current ->
                             app.container.notifier.notify(
                                 FOREGROUND_NOTIFICATION_ID,

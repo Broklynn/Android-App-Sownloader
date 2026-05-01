@@ -8,6 +8,7 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.download.data.DownloadRepository
+import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -30,12 +31,25 @@ class YtDlpDownloader(
     @Volatile
     private var initialized = false
 
+    @Volatile
+    private var updateAttempted = false
+
     fun initialize() {
         if (initialized) return
         synchronized(this) {
             if (initialized) return
             try {
+                FFmpeg.getInstance().init(context.applicationContext)
                 YoutubeDL.getInstance().init(context.applicationContext)
+                if (!updateAttempted) {
+                    updateAttempted = true
+                    runCatching {
+                        YoutubeDL.getInstance().updateYoutubeDL(
+                            context.applicationContext,
+                            YoutubeDL.UpdateChannel.NIGHTLY
+                        )
+                    }
+                }
                 initialized = true
             } catch (_: YoutubeDLException) {
                 initialized = false
@@ -45,6 +59,7 @@ class YtDlpDownloader(
 
     suspend fun download(
         downloadId: Long,
+        formatSelector: String = "best",
         onProgress: suspend () -> Unit = {}
     ) {
         withContext(Dispatchers.IO) {
@@ -67,7 +82,6 @@ class YtDlpDownloader(
 
             repository.updateStatus(downloadId, DownloadStatus.PREPARING)
 
-            val tempDir = createTempDir(downloadId)
             val processId = downloadId.toString()
             activeProcessIds[downloadId] = processId
             val metadata = runCatching {
@@ -76,65 +90,43 @@ class YtDlpDownloader(
             val metadataTitle = FileNameUtils.sanitizeBaseName(
                 metadata?.title?.takeIf { it.isNotBlank() } ?: current.fileName
             )
+            val selector = current.qualitySelector.orEmpty()
             val metadataExt = normalizeExtension(metadata?.ext)
-            val expectedFileName = if (metadataExt.isNullOrBlank()) {
-                "$metadataTitle.%(ext)s"
-            } else {
-                "$metadataTitle.$metadataExt"
-            }
-            val outputTemplate = File(tempDir, expectedFileName).absolutePath
-            val expectedMimeType = metadataExt?.let { mimeTypeFromExtension(it) }
-
-            val request = YoutubeDLRequest(current.sourceUrl).apply {
-                addOption("--no-playlist")
-                addOption("--no-mtime")
-                addOption("-f", "best")
-                addOption("-o", outputTemplate)
-            }
-
-            repository.update(
-                current.copy(
-                    fileName = if (metadataExt.isNullOrBlank()) current.fileName.ifBlank { metadataTitle } else "$metadataTitle.$metadataExt",
-                    mimeType = expectedMimeType ?: current.mimeType,
-                    tempPath = tempDir.absolutePath,
-                    totalBytes = -1,
-                    downloadedBytes = 0,
-                    progress = 0,
-                    speed = 0,
-                    status = DownloadStatus.RUNNING,
-                    errorMessage = null
-                )
-            )
-            onProgress()
+            val attempts = buildAttempts(current.sourceUrl, selector)
+            var lastException: Exception? = null
 
             try {
-                YoutubeDL.getInstance().execute(
-                    request = request,
-                    processId = processId
-                ) { progress: Float, _, _ ->
-                    runBlocking {
-                        val latest = repository.getById(downloadId) ?: return@runBlocking
-                        repository.update(
-                            latest.copy(
-                                tempPath = tempDir.absolutePath,
-                                progress = progress.toInt().coerceIn(0, 100),
-                                status = DownloadStatus.RUNNING,
-                                errorMessage = null
-                            )
+                for ((index, attempt) in attempts.withIndex()) {
+                    val tempDir = createTempDir(downloadId)
+                    try {
+                        executeAttempt(
+                            downloadId = downloadId,
+                            current = current,
+                            tempDir = tempDir,
+                            processId = processId,
+                            metadataTitle = metadataTitle,
+                            metadataExt = metadataExt,
+                            attempt = attempt,
+                            onProgress = onProgress
                         )
-                        onProgress()
+                        return@withContext
+                    } catch (exception: Exception) {
+                        lastException = exception
+                        if (isCanceled(downloadId)) {
+                            tempDir.deleteRecursively()
+                            return@withContext
+                        }
+                        tempDir.deleteRecursively()
+                        if (!shouldRetryAudioAttempt(selector, exception, index, attempts.lastIndex)) {
+                            break
+                        }
                     }
                 }
 
-                currentCoroutineContext().ensureActive()
-                finalizeDownload(downloadId, current, tempDir)
-            } catch (exception: Exception) {
-                val latest = repository.getById(downloadId)
-                if (latest?.status == DownloadStatus.CANCELED || !activeProcessIds.containsKey(downloadId)) {
-                    tempDir.deleteRecursively()
-                    return@withContext
+                val latest = repository.getById(downloadId) ?: current
+                if (latest.status != DownloadStatus.CANCELED) {
+                    handleFailure(downloadId, current, lastException ?: IOException(context.getString(R.string.download_audio_error)))
                 }
-                handleFailure(downloadId, current, tempDir, exception)
             } finally {
                 activeProcessIds.remove(downloadId)
             }
@@ -148,6 +140,80 @@ class YtDlpDownloader(
             }
         }
         createTempDir(downloadId).deleteRecursively()
+    }
+
+    private suspend fun executeAttempt(
+        downloadId: Long,
+        current: DownloadEntity,
+        tempDir: File,
+        processId: String,
+        metadataTitle: String,
+        metadataExt: String?,
+        attempt: YtDlpAttempt,
+        onProgress: suspend () -> Unit
+    ) {
+        val outputTemplate = File(tempDir, "$metadataTitle.%(ext)s").absolutePath
+        val expectedMimeType = when {
+            attempt.convertToMp3 -> "audio/mpeg"
+            metadataExt != null -> mimeTypeFromExtension(metadataExt)
+            else -> null
+        }
+        val displayFileName = when {
+            attempt.convertToMp3 -> "$metadataTitle.mp3"
+            metadataExt.isNullOrBlank() -> FileNameUtils.ensureExtension(metadataTitle, expectedMimeType)
+            else -> "$metadataTitle.$metadataExt"
+        }
+
+        val request = YoutubeDLRequest(current.sourceUrl).apply {
+            addOption("--no-playlist")
+            addOption("--no-mtime")
+            addOption("-f", attempt.formatSelector)
+            attempt.extractorArgs?.let {
+                addOption("--extractor-args", it)
+            }
+            if (attempt.convertToMp3) {
+                addOption("-x")
+                addOption("--audio-format", "mp3")
+                addOption("--audio-quality", "0")
+            }
+            addOption("-o", outputTemplate)
+        }
+
+        repository.update(
+            current.copy(
+                fileName = displayFileName,
+                mimeType = expectedMimeType ?: current.mimeType,
+                tempPath = tempDir.absolutePath,
+                totalBytes = -1,
+                downloadedBytes = 0,
+                progress = 0,
+                speed = 0,
+                status = DownloadStatus.RUNNING,
+                errorMessage = null
+            )
+        )
+        onProgress()
+
+        YoutubeDL.getInstance().execute(
+            request = request,
+            processId = processId
+        ) { progress: Float, _, _ ->
+            runBlocking {
+                val latest = repository.getById(downloadId) ?: return@runBlocking
+                repository.update(
+                    latest.copy(
+                        tempPath = tempDir.absolutePath,
+                        progress = progress.toInt().coerceIn(0, 100),
+                        status = DownloadStatus.RUNNING,
+                        errorMessage = null
+                    )
+                )
+                onProgress()
+            }
+        }
+
+        currentCoroutineContext().ensureActive()
+        finalizeDownload(downloadId, current, tempDir)
     }
 
     private suspend fun finalizeDownload(
@@ -187,11 +253,9 @@ class YtDlpDownloader(
     private suspend fun handleFailure(
         downloadId: Long,
         current: DownloadEntity,
-        tempDir: File,
         exception: Exception
     ) {
-        val message = buildErrorMessage(exception)
-        tempDir.deleteRecursively()
+        val message = buildErrorMessage(current, exception)
         repository.update(
             current.copy(
                 tempPath = null,
@@ -202,8 +266,14 @@ class YtDlpDownloader(
         repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
     }
 
-    private fun buildErrorMessage(exception: Exception): String {
+    private fun buildErrorMessage(current: DownloadEntity, exception: Exception): String {
         val detail = exception.message?.trim().orEmpty()
+        if (current.qualitySelector == "mp3" && detail.contains("ffmpeg", ignoreCase = true)) {
+            return context.getString(R.string.download_mp3_error)
+        }
+        if (isAudioRequest(current.qualitySelector.orEmpty())) {
+            return context.getString(R.string.download_audio_error)
+        }
         return if (detail.isBlank()) {
             context.getString(R.string.download_ytdlp_error)
         } else {
@@ -215,6 +285,79 @@ class YtDlpDownloader(
         val directory = File(context.cacheDir, "ytdlp/$downloadId")
         directory.mkdirs()
         return directory
+    }
+
+    private fun buildAttempts(sourceUrl: String, selector: String): List<YtDlpAttempt> {
+        val normalized = selector.ifBlank { "best" }
+        return when {
+            normalized == "mp3" -> listOf(
+                YtDlpAttempt(
+                    formatSelector = "ba[ext=m4a]/ba[ext=webm]/bestaudio/best",
+                    extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = false),
+                    convertToMp3 = true
+                ),
+                YtDlpAttempt(
+                    formatSelector = "bestaudio/best",
+                    extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = true),
+                    convertToMp3 = true
+                )
+            )
+            normalized == "bestaudio" -> listOf(
+                YtDlpAttempt(
+                    formatSelector = "ba[ext=m4a]/ba[ext=webm]/bestaudio/best",
+                    extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = false)
+                ),
+                YtDlpAttempt(
+                    formatSelector = "bestaudio/best",
+                    extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = true)
+                )
+            )
+            else -> listOf(
+                YtDlpAttempt(
+                    formatSelector = normalized
+                )
+            )
+        }
+    }
+
+    private fun youtubeExtractorArgs(sourceUrl: String, fallback: Boolean): String? {
+        if (!isYoutubeUrl(sourceUrl)) return null
+        return if (fallback) {
+            "youtube:player-client=android_vr"
+        } else {
+            "youtube:player-client=android_vr,android"
+        }
+    }
+
+    private fun shouldRetryAudioAttempt(
+        selector: String,
+        exception: Exception,
+        attemptIndex: Int,
+        lastIndex: Int
+    ): Boolean {
+        if (!isAudioRequest(selector)) return false
+        if (attemptIndex >= lastIndex) return false
+        val message = exception.message.orEmpty()
+        return message.contains("403", ignoreCase = true) ||
+            message.contains("unable to download video data", ignoreCase = true) ||
+            message.contains("Forbidden", ignoreCase = true)
+    }
+
+    private fun isAudioRequest(selector: String): Boolean {
+        return selector == "bestaudio" || selector == "mp3"
+    }
+
+    private fun isYoutubeUrl(url: String): Boolean {
+        val host = runCatching { Uri.parse(url).host?.lowercase(Locale.US).orEmpty() }.getOrDefault("")
+        return host == "youtube.com" ||
+            host.endsWith(".youtube.com") ||
+            host == "youtu.be" ||
+            host.endsWith(".youtu.be")
+    }
+
+    private suspend fun isCanceled(downloadId: Long): Boolean {
+        val current = repository.getById(downloadId) ?: return true
+        return current.status == DownloadStatus.CANCELED || !activeProcessIds.containsKey(downloadId)
     }
 
     private fun findFinalOutputFile(tempDir: File): File? {
@@ -231,9 +374,7 @@ class YtDlpDownloader(
             ?: File(context.filesDir, "downloads")
         directory.mkdirs()
 
-        val candidateName = FileNameUtils.ensureExtension(
-            FileNameUtils.sanitize(preferredName)
-        )
+        val candidateName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName))
         var candidate = File(directory, candidateName)
         var index = 1
         val name = candidateName.substringBeforeLast('.', candidateName)
@@ -281,4 +422,10 @@ class YtDlpDownloader(
             ?: return null
         return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
     }
+
+    private data class YtDlpAttempt(
+        val formatSelector: String,
+        val extractorArgs: String? = null,
+        val convertToMp3: Boolean = false
+    )
 }

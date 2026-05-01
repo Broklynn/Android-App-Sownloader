@@ -5,7 +5,7 @@ import com.androiddownload.download.data.DownloadRepository
 class DownloadQueue(
     private val repository: DownloadRepository
 ) {
-    suspend fun enqueue(sourceUrl: String): Long {
-        return repository.enqueue(sourceUrl)
+    suspend fun enqueue(sourceUrl: String, qualitySelector: String? = null): Long {
+        return repository.enqueue(sourceUrl, qualitySelector)
     }
 }

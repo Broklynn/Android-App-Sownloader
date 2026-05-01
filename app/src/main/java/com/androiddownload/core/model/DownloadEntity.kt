@@ -19,6 +19,7 @@ data class DownloadEntity(
     val speed: Long = 0,
     val status: DownloadStatus = DownloadStatus.QUEUED,
     val errorMessage: String? = null,
+    val qualitySelector: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

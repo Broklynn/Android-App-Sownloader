@@ -18,7 +18,7 @@ class AppContainer(context: Context) {
         appContext,
         AppDatabase::class.java,
         "android-download.db"
-    ).build()
+    ).addMigrations(AppDatabase.MIGRATION_1_2).build()
 
     val repository: DownloadRepository = DownloadRepository(database.downloadDao())
 

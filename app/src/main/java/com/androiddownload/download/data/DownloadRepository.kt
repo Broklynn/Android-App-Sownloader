@@ -11,12 +11,16 @@ class DownloadRepository(
 ) {
     fun observeDownloads(): Flow<List<DownloadEntity>> = dao.observeDownloads()
 
-    suspend fun enqueue(sourceUrl: String): Long {
+    suspend fun enqueue(
+        sourceUrl: String,
+        qualitySelector: String? = null
+    ): Long {
         val now = System.currentTimeMillis()
         return dao.insert(
             DownloadEntity(
                 sourceUrl = sourceUrl,
                 fileName = FileNameUtils.guessFileName(sourceUrl),
+                qualitySelector = qualitySelector,
                 createdAt = now,
                 updatedAt = now
             )
