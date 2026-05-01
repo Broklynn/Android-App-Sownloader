@@ -7,6 +7,7 @@ import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.FileNameUtils
+import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.download.data.DownloadRepository
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -155,11 +156,13 @@ class YtDlpDownloader(
         val outputTemplate = File(tempDir, "$metadataTitle.%(ext)s").absolutePath
         val expectedMimeType = when {
             attempt.convertToMp3 -> "audio/mpeg"
+            attempt.mergeOutputFormat == "mp4" -> "video/mp4"
             metadataExt != null -> mimeTypeFromExtension(metadataExt)
             else -> null
         }
         val displayFileName = when {
             attempt.convertToMp3 -> "$metadataTitle.mp3"
+            attempt.mergeOutputFormat == "mp4" -> "$metadataTitle.mp4"
             metadataExt.isNullOrBlank() -> FileNameUtils.ensureExtension(metadataTitle, expectedMimeType)
             else -> "$metadataTitle.$metadataExt"
         }
@@ -171,10 +174,13 @@ class YtDlpDownloader(
             attempt.extractorArgs?.let {
                 addOption("--extractor-args", it)
             }
+            attempt.mergeOutputFormat?.let {
+                addOption("--merge-output-format", it)
+            }
             if (attempt.convertToMp3) {
                 addOption("-x")
                 addOption("--audio-format", "mp3")
-                addOption("--audio-quality", "0")
+                addOption("--audio-quality", attempt.audioQuality ?: "0")
             }
             addOption("-o", outputTemplate)
         }
@@ -268,7 +274,7 @@ class YtDlpDownloader(
 
     private fun buildErrorMessage(current: DownloadEntity, exception: Exception): String {
         val detail = exception.message?.trim().orEmpty()
-        if (current.qualitySelector == "mp3" && detail.contains("ffmpeg", ignoreCase = true)) {
+        if (isMp3Request(current.qualitySelector.orEmpty()) && detail.contains("ffmpeg", ignoreCase = true)) {
             return context.getString(R.string.download_mp3_error)
         }
         if (isAudioRequest(current.qualitySelector.orEmpty())) {
@@ -289,17 +295,20 @@ class YtDlpDownloader(
 
     private fun buildAttempts(sourceUrl: String, selector: String): List<YtDlpAttempt> {
         val normalized = selector.ifBlank { "best" }
+        val mp3AudioQuality = mp3AudioQualityForSelector(normalized)
         return when {
-            normalized == "mp3" -> listOf(
+            mp3AudioQuality != null -> listOf(
                 YtDlpAttempt(
                     formatSelector = "ba[ext=m4a]/ba[ext=webm]/bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = false),
-                    convertToMp3 = true
+                    convertToMp3 = true,
+                    audioQuality = mp3AudioQuality
                 ),
                 YtDlpAttempt(
                     formatSelector = "bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = true),
-                    convertToMp3 = true
+                    convertToMp3 = true,
+                    audioQuality = mp3AudioQuality
                 )
             )
             normalized == "bestaudio" -> listOf(
@@ -314,7 +323,8 @@ class YtDlpDownloader(
             )
             else -> listOf(
                 YtDlpAttempt(
-                    formatSelector = normalized
+                    formatSelector = normalized,
+                    mergeOutputFormat = if (shouldMergeToMp4(normalized)) "mp4" else null
                 )
             )
         }
@@ -344,7 +354,29 @@ class YtDlpDownloader(
     }
 
     private fun isAudioRequest(selector: String): Boolean {
-        return selector == "bestaudio" || selector == "mp3"
+        return selector == "bestaudio" || isMp3Request(selector)
+    }
+
+    private fun isMp3Request(selector: String): Boolean {
+        return mp3AudioQualityForSelector(selector) != null
+    }
+
+    private fun mp3AudioQualityForSelector(selector: String): String? {
+        return when (selector) {
+            "mp3" -> "0"
+            YtDlpQualityOptions.SELECTOR_MP3_320K -> "320K"
+            YtDlpQualityOptions.SELECTOR_MP3_256K -> "256K"
+            YtDlpQualityOptions.SELECTOR_MP3_192K -> "192K"
+            YtDlpQualityOptions.SELECTOR_MP3_128K -> "128K"
+            else -> null
+        }
+    }
+
+    private fun shouldMergeToMp4(selector: String): Boolean {
+        return selector == YtDlpQualityOptions.SELECTOR_MP4_1440P ||
+            selector == YtDlpQualityOptions.SELECTOR_MP4_1080P ||
+            selector == YtDlpQualityOptions.SELECTOR_MP4_720P ||
+            selector == YtDlpQualityOptions.SELECTOR_MP4_480P
     }
 
     private fun isYoutubeUrl(url: String): Boolean {
@@ -426,6 +458,8 @@ class YtDlpDownloader(
     private data class YtDlpAttempt(
         val formatSelector: String,
         val extractorArgs: String? = null,
-        val convertToMp3: Boolean = false
+        val convertToMp3: Boolean = false,
+        val audioQuality: String? = null,
+        val mergeOutputFormat: String? = null
     )
 }

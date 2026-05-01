@@ -371,33 +371,14 @@ class MainActivity : Activity() {
                 label = getString(R.string.default_quality_ask_always),
                 preferenceValue = DEFAULT_QUALITY_ASK_VALUE,
                 formatSelector = null
-            ),
-            DefaultQualityOption(
-                label = getString(R.string.ytdlp_quality_mp4_best),
-                preferenceValue = "best",
-                formatSelector = "best"
-            ),
-            DefaultQualityOption(
-                label = getString(R.string.ytdlp_quality_mp4_720p),
-                preferenceValue = "best[height<=720]",
-                formatSelector = "best[height<=720]"
-            ),
-            DefaultQualityOption(
-                label = getString(R.string.ytdlp_quality_mp4_480p),
-                preferenceValue = "best[height<=480]",
-                formatSelector = "best[height<=480]"
-            ),
-            DefaultQualityOption(
-                label = getString(R.string.ytdlp_quality_mp4_360p),
-                preferenceValue = "best[height<=360]",
-                formatSelector = "best[height<=360]"
-            ),
-            DefaultQualityOption(
-                label = getString(R.string.ytdlp_quality_mp3),
-                preferenceValue = "mp3",
-                formatSelector = "mp3"
             )
-        )
+        ) + YtDlpQualityOptions.build(this, null).map { option ->
+            DefaultQualityOption(
+                label = option.label,
+                preferenceValue = option.formatSelector,
+                formatSelector = option.formatSelector
+            )
+        }
     }
 
     private fun handleYtDlpDownloadRequest(
