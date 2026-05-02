@@ -2,22 +2,22 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_enabled="false">
         <shape>
-            <corners android:radius="14dp" />
+            <corners android:radius="18dp" />
             <solid android:color="@color/button_disabled" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape>
-            <corners android:radius="14dp" />
+            <corners android:radius="18dp" />
             <gradient
                 android:angle="0"
-                android:endColor="@color/accent_secondary"
-                android:startColor="@color/brand_dark" />
+                android:endColor="@color/brand"
+                android:startColor="@color/accent_secondary" />
         </shape>
     </item>
     <item>
         <shape>
-            <corners android:radius="14dp" />
+            <corners android:radius="18dp" />
             <gradient
                 android:angle="0"
                 android:endColor="@color/accent_secondary"

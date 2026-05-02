@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.ListView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -60,31 +61,44 @@ import android.webkit.WebViewClient
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    private lateinit var appHeader: View
+    private lateinit var mainTabBar: View
     private lateinit var homeContainer: View
     private lateinit var browserContainer: View
     private lateinit var downloadsContainer: View
     private lateinit var settingsContainer: View
+    private lateinit var settingsMenuButton: ImageButton
     private lateinit var emptyDownloadsText: TextView
     private lateinit var clearFinishedButton: Button
     private lateinit var downloadsSearchInput: EditText
     private lateinit var recentDownloadsSection: LinearLayout
     private lateinit var clearRecentButton: Button
     private lateinit var recentDownloadsList: LinearLayout
+    private lateinit var homeRecentDownloadsSection: LinearLayout
+    private lateinit var homeRecentDownloadsList: LinearLayout
     private lateinit var downloadsFilterAllButton: Button
     private lateinit var downloadsFilterActiveButton: Button
     private lateinit var downloadsFilterPausedButton: Button
     private lateinit var downloadsFilterCompletedButton: Button
     private lateinit var downloadsFilterFailedButton: Button
+    private lateinit var activeDownloadCard: View
+    private lateinit var activeDownloadNameText: TextView
+    private lateinit var activeDownloadFormatText: TextView
+    private lateinit var activeDownloadProgressText: TextView
+    private lateinit var activeDownloadProgressBar: ProgressBar
+    private lateinit var activeDownloadSpeedText: TextView
+    private lateinit var activeDownloadSizeText: TextView
+    private lateinit var downloadLocationCard: View
     private lateinit var downloadLocationText: TextView
     private lateinit var ytdlpUpdateStatusText: TextView
     private lateinit var updateYtDlpButton: Button
     private lateinit var aboutAppButton: Button
+    private lateinit var settingsCloseButton: Button
     private lateinit var homeController: HomeController
     private lateinit var adapter: DownloadsAdapter
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
     private lateinit var browserTabButton: Button
-    private lateinit var settingsTabButton: Button
     private lateinit var defaultQualityValueText: TextView
     private lateinit var defaultQualityButton: Button
     private lateinit var browserUrlInput: EditText
@@ -104,6 +118,7 @@ class MainActivity : Activity() {
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var downloadsFilter = DownloadsFilter.ALL
     private var downloadsSearchQuery: String = ""
+    private var currentScreen = PrimaryScreen.HOME
     private val detectedMediaLock = Any()
     private val detectedMediaCandidates = LinkedHashMap<String, MediaCandidate>()
     private val settingsPreferences: SharedPreferences
@@ -123,29 +138,42 @@ class MainActivity : Activity() {
             errorText = findViewById(R.id.urlErrorText)
         )
 
+        appHeader = findViewById(R.id.appHeader)
+        mainTabBar = findViewById(R.id.mainTabBar)
         homeContainer = findViewById(R.id.homeContainer)
         browserContainer = findViewById(R.id.browserContainer)
         downloadsContainer = findViewById(R.id.downloadsContainer)
         settingsContainer = findViewById(R.id.settingsContainer)
+        settingsMenuButton = findViewById(R.id.settingsMenuButton)
         emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
         clearFinishedButton = findViewById(R.id.clearFinishedButton)
         downloadsSearchInput = findViewById(R.id.downloadsSearchInput)
         recentDownloadsSection = findViewById(R.id.recentDownloadsSection)
         clearRecentButton = findViewById(R.id.clearRecentButton)
         recentDownloadsList = findViewById(R.id.recentDownloadsList)
+        homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
+        homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
         downloadsFilterAllButton = findViewById(R.id.downloadsFilterAllButton)
         downloadsFilterActiveButton = findViewById(R.id.downloadsFilterActiveButton)
         downloadsFilterPausedButton = findViewById(R.id.downloadsFilterPausedButton)
         downloadsFilterCompletedButton = findViewById(R.id.downloadsFilterCompletedButton)
         downloadsFilterFailedButton = findViewById(R.id.downloadsFilterFailedButton)
+        activeDownloadCard = findViewById(R.id.activeDownloadCard)
+        activeDownloadNameText = findViewById(R.id.activeDownloadNameText)
+        activeDownloadFormatText = findViewById(R.id.activeDownloadFormatText)
+        activeDownloadProgressText = findViewById(R.id.activeDownloadProgressText)
+        activeDownloadProgressBar = findViewById(R.id.activeDownloadProgressBar)
+        activeDownloadSpeedText = findViewById(R.id.activeDownloadSpeedText)
+        activeDownloadSizeText = findViewById(R.id.activeDownloadSizeText)
+        downloadLocationCard = findViewById(R.id.downloadLocationCard)
         downloadLocationText = findViewById(R.id.downloadLocationText)
         ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
         updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
         aboutAppButton = findViewById(R.id.aboutAppButton)
+        settingsCloseButton = findViewById(R.id.settingsCloseButton)
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         browserTabButton = findViewById(R.id.browserTabButton)
-        settingsTabButton = findViewById(R.id.settingsTabButton)
         defaultQualityValueText = findViewById(R.id.defaultQualityValueText)
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
         browserUrlInput = findViewById(R.id.browserUrlInput)
@@ -189,7 +217,8 @@ class MainActivity : Activity() {
         homeTabButton.setOnClickListener { showHome() }
         downloadsTabButton.setOnClickListener { showDownloads() }
         browserTabButton.setOnClickListener { showBrowser() }
-        settingsTabButton.setOnClickListener { showSettings() }
+        settingsMenuButton.setOnClickListener { showSettings() }
+        settingsCloseButton.setOnClickListener { closeSettingsOverlay() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
         browserGoButton.setOnClickListener { loadBrowserPage() }
         browserBackButton.setOnClickListener {
@@ -249,6 +278,7 @@ class MainActivity : Activity() {
             app.container.repository.observeDownloads().collectLatest { downloads ->
                 currentDownloads = downloads
                 renderDownloadsList()
+                renderHomeRecentDownloads()
                 hasActiveDownloads = downloads.any {
                     it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PREPARING
                 }
@@ -258,6 +288,7 @@ class MainActivity : Activity() {
 
         updateDefaultQualityText()
         updateDownloadLocationText()
+        renderHomeRecentDownloads()
         renderRecentDownloads()
         showHome()
         handleIntent(intent)
@@ -282,15 +313,22 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
+        currentScreen = PrimaryScreen.HOME
+        appHeader.visibility = View.VISIBLE
+        mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.VISIBLE
         browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
         settingsContainer.visibility = View.GONE
+        renderHomeRecentDownloads()
         renderRecentDownloads()
         updateSelectedTab(homeTabButton)
     }
 
     private fun showDownloads() {
+        currentScreen = PrimaryScreen.DOWNLOADS
+        appHeader.visibility = View.VISIBLE
+        mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
@@ -333,6 +371,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderDownloadsList() {
+        updateActiveDownloadCard()
         val filteredDownloads = currentDownloads
             .filter { it.matchesDownloadsFilter(downloadsFilter) }
             .filter { it.matchesDownloadsSearch(downloadsSearchQuery) }
@@ -348,8 +387,8 @@ class MainActivity : Activity() {
     }
 
     private fun updateDownloadsFilterUi() {
-        val selectedColor = R.color.text_primary
-        val unselectedColor = R.color.text_secondary
+        val selectedColor = R.color.brand
+        val unselectedColor = R.color.text_muted
         val buttons = listOf(
             downloadsFilterAllButton,
             downloadsFilterActiveButton,
@@ -374,6 +413,197 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun renderHomeRecentDownloads() {
+        homeRecentDownloadsSection.visibility = View.VISIBLE
+        homeRecentDownloadsList.removeAllViews()
+
+        val downloads = currentDownloads.take(MAX_HOME_RECENT_DOWNLOADS_DISPLAYED)
+        if (downloads.isEmpty()) {
+            val emptyText = TextView(this).apply {
+                text = getString(R.string.home_recent_downloads_empty)
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                setBackgroundResource(R.drawable.bg_empty_state)
+                setPadding(dp(16), dp(18), dp(16), dp(18))
+            }
+            homeRecentDownloadsList.addView(
+                emptyText,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            return
+        }
+
+        downloads.forEachIndexed { index, download ->
+            val card = buildHomeRecentDownloadCard(download)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                params.topMargin = dp(10)
+            }
+            homeRecentDownloadsList.addView(card, params)
+        }
+    }
+
+    private fun buildHomeRecentDownloadCard(download: DownloadEntity): View {
+        val formatLabel = formatLabelForDetails(download)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_download_item)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            isClickable = true
+            setOnClickListener { showDownloadDetailsDialog(download) }
+
+            addView(
+                TextView(context).apply {
+                    text = downloadTypeBadgeLabel(download, formatLabel)
+                    gravity = android.view.Gravity.CENTER
+                    setBackgroundResource(R.drawable.bg_media_art_placeholder)
+                    setTextColor(getColor(R.color.background_main))
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                },
+                LinearLayout.LayoutParams(dp(56), dp(56))
+            )
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), 0, 0, 0)
+
+                    addView(
+                        TextView(context).apply {
+                            text = download.fileName
+                            setTextColor(getColor(R.color.text_primary))
+                            textSize = 15f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                    )
+
+                    addView(
+                        TextView(context).apply {
+                            text = "$formatLabel - ${downloadStatusLabel(download.status)}"
+                            setTextColor(getColor(R.color.text_secondary))
+                            textSize = 12f
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = dp(5)
+                        }
+                    )
+
+                    addView(
+                        TextView(context).apply {
+                            text = summaryDownloadSizeText(download)
+                            setTextColor(getColor(R.color.text_muted))
+                            textSize = 12f
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = dp(5)
+                        }
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+        }
+    }
+
+    private fun updateActiveDownloadCard() {
+        val activeDownload = currentDownloads.firstOrNull { download ->
+            download.status == DownloadStatus.QUEUED ||
+                download.status == DownloadStatus.PREPARING ||
+                download.status == DownloadStatus.RUNNING
+        }
+        if (activeDownload == null) {
+            activeDownloadCard.visibility = View.GONE
+            activeDownloadCard.setOnClickListener(null)
+            return
+        }
+
+        val progress = normalizedProgress(activeDownload)
+        val indeterminate = isIndeterminateDownload(activeDownload)
+        activeDownloadCard.visibility = View.VISIBLE
+        activeDownloadCard.setOnClickListener { showDownloadDetailsDialog(activeDownload) }
+        activeDownloadNameText.text = activeDownload.fileName
+        activeDownloadFormatText.text =
+            "${formatLabelForDetails(activeDownload)} - ${downloadStatusLabel(activeDownload.status)}"
+        activeDownloadProgressText.text = progressLabel(indeterminate, progress)
+        activeDownloadProgressBar.isIndeterminate = indeterminate
+        activeDownloadProgressBar.progress = progress
+        activeDownloadSpeedText.text = formatSpeedForDetails(activeDownload.speed)
+        activeDownloadSizeText.text = summaryDownloadSizeText(activeDownload)
+    }
+
+    private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
+        return DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
+            download.totalBytes <= 0 &&
+            download.progress <= 0 &&
+            (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
+    }
+
+    private fun normalizedProgress(download: DownloadEntity): Int {
+        return when (download.status) {
+            DownloadStatus.COMPLETED -> 100
+            else -> download.progress.coerceIn(0, 100)
+        }
+    }
+
+    private fun progressLabel(indeterminate: Boolean, progress: Int): String {
+        return if (indeterminate) {
+            getString(R.string.download_progress_unknown)
+        } else {
+            "$progress%"
+        }
+    }
+
+    private fun summaryDownloadSizeText(download: DownloadEntity): String {
+        return when {
+            download.totalBytes > 0 -> {
+                val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
+                val total = FileSizeFormatter.formatBytes(download.totalBytes)
+                "$downloaded / $total"
+            }
+            download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
+            download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
+            else -> getString(R.string.download_progress_unknown)
+        }
+    }
+
+    private fun downloadTypeBadgeLabel(download: DownloadEntity, formatLabel: String): String {
+        val label = formatLabel.uppercase(Locale.US)
+        return when {
+            "MP3" in label -> "MP3"
+            "MP4" in label -> "MP4"
+            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "HTTP"
+            else -> "AIO"
+        }
+    }
+
     private fun renderRecentDownloads() {
         val recentUrls = loadRecentDownloadUrls()
         recentDownloadsSection.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
@@ -383,7 +613,7 @@ class MainActivity : Activity() {
         recentUrls.take(MAX_RECENT_DOWNLOAD_URLS_DISPLAYED).forEachIndexed { index, url ->
             val button = Button(this).apply {
                 text = url
-                setBackgroundResource(R.drawable.bg_button_secondary)
+                setBackgroundResource(R.drawable.bg_chip)
                 setTextColor(getColor(R.color.button_secondary_text))
                 textSize = 12f
                 isAllCaps = false
@@ -521,17 +751,17 @@ class MainActivity : Activity() {
     private fun buildDownloadDetailsText(download: DownloadEntity): String {
         val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM)
         val details = linkedMapOf(
-            "Nome do arquivo" to download.fileName,
-            "Status" to downloadStatusLabel(download.status),
-            "Formato/qualidade" to formatLabelForDetails(download),
-            "URL original" to download.sourceUrl,
-            "Baixado" to buildDownloadSizeText(download),
-            "Progresso" to progressLabelForDetails(download),
-            "Velocidade" to formatSpeedForDetails(download.speed),
-            "Erro" to (download.errorMessage?.takeIf { it.isNotBlank() } ?: "Nenhum"),
-            "URI final" to (download.destinationUri?.takeIf { it.isNotBlank() } ?: "N/D"),
-            "Criado em" to dateFormat.format(java.util.Date(download.createdAt)),
-            "Atualizado em" to dateFormat.format(java.util.Date(download.updatedAt))
+            getString(R.string.download_detail_file_name) to download.fileName,
+            getString(R.string.download_detail_status) to downloadStatusLabel(download.status),
+            getString(R.string.download_detail_format) to formatLabelForDetails(download),
+            getString(R.string.download_detail_source_url) to download.sourceUrl,
+            getString(R.string.download_detail_downloaded) to buildDownloadSizeText(download),
+            getString(R.string.download_detail_progress) to progressLabelForDetails(download),
+            getString(R.string.download_detail_speed) to formatSpeedForDetails(download.speed),
+            getString(R.string.download_detail_error) to (download.errorMessage?.takeIf { it.isNotBlank() } ?: getString(R.string.none)),
+            getString(R.string.download_detail_final_uri) to (download.destinationUri?.takeIf { it.isNotBlank() } ?: getString(R.string.not_available)),
+            getString(R.string.download_detail_created_at) to dateFormat.format(java.util.Date(download.createdAt)),
+            getString(R.string.download_detail_updated_at) to dateFormat.format(java.util.Date(download.updatedAt))
         )
 
         return details.entries.joinToString(separator = "\n\n") { (label, value) ->
@@ -540,8 +770,8 @@ class MainActivity : Activity() {
     }
 
     private fun formatLabelForDetails(download: DownloadEntity): String {
-        val label = YtDlpQualityOptions.labelForDownload(download)
-        return if (label.isBlank()) "HTTP" else label
+        val label = YtDlpQualityOptions.labelForDownload(this, download)
+        return if (label.isBlank()) getString(R.string.download_direct) else label
     }
 
     private fun downloadStatusLabel(status: DownloadStatus): String {
@@ -574,7 +804,7 @@ class MainActivity : Activity() {
         return if (speed > 0L) {
             FileSizeFormatter.formatSpeed(speed)
         } else {
-            "N/D"
+            getString(R.string.not_available)
         }
     }
 
@@ -598,6 +828,9 @@ class MainActivity : Activity() {
     }
 
     private fun showBrowser() {
+        currentScreen = PrimaryScreen.BROWSER
+        appHeader.visibility = View.VISIBLE
+        mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.VISIBLE
         downloadsContainer.visibility = View.GONE
@@ -605,7 +838,9 @@ class MainActivity : Activity() {
         updateSelectedTab(browserTabButton)
     }
 
-    private fun showSettings() {
+    private fun showSettings(scrollToDownloadLocation: Boolean = false) {
+        appHeader.visibility = View.GONE
+        mainTabBar.visibility = View.GONE
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
@@ -613,7 +848,20 @@ class MainActivity : Activity() {
         updateDefaultQualityText()
         updateDownloadLocationText()
         updateYtDlpUpdateUiState()
-        updateSelectedTab(settingsTabButton)
+        updateSelectedTab(null)
+        if (scrollToDownloadLocation) {
+            settingsContainer.post {
+                (settingsContainer as? ScrollView)?.smoothScrollTo(0, downloadLocationCard.top)
+            }
+        }
+    }
+
+    private fun closeSettingsOverlay() {
+        when (currentScreen) {
+            PrimaryScreen.HOME -> showHome()
+            PrimaryScreen.DOWNLOADS -> showDownloads()
+            PrimaryScreen.BROWSER -> showBrowser()
+        }
     }
 
     private fun DownloadEntity.matchesDownloadsFilter(filter: DownloadsFilter): Boolean {
@@ -654,7 +902,7 @@ class MainActivity : Activity() {
         val versionName = runCatching {
             @Suppress("DEPRECATION")
             packageManager.getPackageInfo(packageName, 0).versionName
-        }.getOrNull().orEmpty().ifBlank { "N/D" }
+        }.getOrNull().orEmpty().ifBlank { getString(R.string.not_available) }
         val message = buildString {
             appendLine(getString(R.string.about_app_name))
             appendLine(getString(R.string.about_app_version, versionName))
@@ -722,8 +970,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateSelectedTab(selectedTab: Button) {
-        listOf(homeTabButton, downloadsTabButton, browserTabButton, settingsTabButton).forEach { tab ->
+    private fun updateSelectedTab(selectedTab: Button?) {
+        listOf(homeTabButton, downloadsTabButton, browserTabButton).forEach { tab ->
             val isSelected = tab == selectedTab
             tab.isSelected = isSelected
             tab.setBackgroundResource(
@@ -796,7 +1044,7 @@ class MainActivity : Activity() {
         homeController: HomeController? = null
     ) {
         val options = YtDlpQualityOptions.build(this@MainActivity, null)
-        val dialogTitle = YtDlpQualityOptions.displayTitle(null)
+        val dialogTitle = YtDlpQualityOptions.displayTitle(this@MainActivity, null)
 
         AlertDialog.Builder(this@MainActivity)
             .setTitle(dialogTitle)
@@ -1092,23 +1340,23 @@ class MainActivity : Activity() {
         val decodedName = runCatching {
             Uri.decode(rawName)
         }.getOrDefault(rawName).trim()
-        val displayName = decodedName.ifBlank { DEFAULT_MEDIA_DISPLAY_NAME }
+        val displayName = decodedName.ifBlank { getString(R.string.browser_media_default_name) }
         return displayName.limitLength(MAX_MEDIA_DISPLAY_NAME_LENGTH)
     }
 
     private fun typeLabelForExtension(extension: String): String {
         return when (extension) {
-            "mp4" -> "V\u00eddeo MP4"
-            "webm" -> "V\u00eddeo WEBM"
-            "m3u8" -> "HLS / Streaming"
-            "mp3" -> "\u00c1udio MP3"
-            "m4a" -> "\u00c1udio M4A"
+            "mp4" -> getString(R.string.browser_media_type_video_mp4)
+            "webm" -> getString(R.string.browser_media_type_video_webm)
+            "m3u8" -> getString(R.string.browser_media_type_hls_streaming)
+            "mp3" -> getString(R.string.browser_media_type_audio_mp3)
+            "m4a" -> getString(R.string.browser_media_type_audio_m4a)
             "jpg",
             "jpeg",
-            "png" -> "Imagem"
-            "pdf" -> "PDF"
-            "zip" -> "ZIP"
-            else -> "M\u00eddia"
+            "png" -> getString(R.string.browser_media_type_image)
+            "pdf" -> getString(R.string.browser_media_type_pdf)
+            "zip" -> getString(R.string.browser_media_type_zip)
+            else -> getString(R.string.browser_media_type_generic)
         }
     }
 
@@ -1272,6 +1520,10 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if (settingsContainer.visibility == View.VISIBLE) {
+            closeSettingsOverlay()
+            return
+        }
         if (browserContainer.visibility == View.VISIBLE && browserWebView.canGoBack()) {
             browserWebView.goBack()
             return
@@ -1436,6 +1688,12 @@ class MainActivity : Activity() {
         FAILED
     }
 
+    private enum class PrimaryScreen {
+        HOME,
+        DOWNLOADS,
+        BROWSER
+    }
+
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
@@ -1443,8 +1701,8 @@ class MainActivity : Activity() {
         private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
         private const val PREF_RECENT_DOWNLOAD_URLS = "recent_download_urls"
         private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
-        private const val DEFAULT_MEDIA_DISPLAY_NAME = "M\u00eddia detectada"
         private const val MAX_MEDIA_DISPLAY_NAME_LENGTH = 56
+        private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val MAX_RECENT_DOWNLOAD_URLS = 10
         private const val MAX_RECENT_DOWNLOAD_URLS_DISPLAYED = 5
         private const val ELLIPSIS = "..."

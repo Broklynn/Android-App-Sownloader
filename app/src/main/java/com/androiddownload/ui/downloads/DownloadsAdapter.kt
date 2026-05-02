@@ -14,6 +14,7 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.YtDlpQualityOptions
+import java.util.Locale
 
 class DownloadsAdapter(
     context: Context,
@@ -67,6 +68,7 @@ class DownloadsAdapter(
         private val onShareClick: (DownloadEntity) -> Unit
     ) {
         private val root: View = view
+        private val downloadTypeBadge: TextView = view.findViewById(R.id.downloadTypeBadge)
         private val fileNameText: TextView = view.findViewById(R.id.fileNameText)
         private val statusText: TextView = view.findViewById(R.id.statusText)
         private val formatText: TextView = view.findViewById(R.id.formatText)
@@ -84,7 +86,8 @@ class DownloadsAdapter(
             fileNameText.text = download.fileName
             statusText.text = statusLabel(download.status)
             statusText.setTextColor(statusColor(download.status))
-            val formatLabel = YtDlpQualityOptions.labelForDownload(download)
+            val formatLabel = YtDlpQualityOptions.labelForDownload(root.context, download)
+            downloadTypeBadge.text = typeBadgeLabel(download, formatLabel)
             formatText.text = formatLabel
             formatText.visibility = if (formatLabel.isBlank()) View.GONE else View.VISIBLE
             val indeterminate = isIndeterminate(download)
@@ -93,7 +96,9 @@ class DownloadsAdapter(
             progressBar.progress = progress
             progressText.text = progressLabel(indeterminate, progress)
             sizeText.text = buildSizeText(download)
-            speedText.text = FileSizeFormatter.formatSpeed(download.speed).ifBlank { "N/D" }
+            speedText.text = FileSizeFormatter.formatSpeed(download.speed).ifBlank {
+                root.context.getString(R.string.not_available)
+            }
             val actionConfig = actionConfig(download)
             actionButton.visibility = if (actionConfig != null) View.VISIBLE else View.GONE
             actionButton.isEnabled = actionConfig != null
@@ -227,6 +232,16 @@ class DownloadsAdapter(
                 download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
                 download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
                 else -> root.context.getString(R.string.download_progress_unknown)
+            }
+        }
+
+        private fun typeBadgeLabel(download: DownloadEntity, formatLabel: String): String {
+            val label = formatLabel.uppercase(Locale.US)
+            return when {
+                "MP3" in label -> "MP3"
+                "MP4" in label -> "MP4"
+                DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "HTTP"
+                else -> "AIO"
             }
         }
     }

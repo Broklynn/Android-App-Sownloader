@@ -33,28 +33,27 @@ object YtDlpQualityOptions {
         )
     }
 
-    fun displayTitle(videoInfo: VideoInfo?): String {
-        val title = videoInfo?.fulltitle?.takeIf { it.isNotBlank() }
+    fun displayTitle(context: Context, videoInfo: VideoInfo?): String {
+        return videoInfo?.fulltitle?.takeIf { it.isNotBlank() }
             ?: videoInfo?.title?.takeIf { it.isNotBlank() }
-            ?: "Escolha a qualidade"
-        return title
+            ?: context.getString(R.string.choose_quality_title)
     }
 
-    fun labelForDownload(download: DownloadEntity): String {
+    fun labelForDownload(context: Context, download: DownloadEntity): String {
         val selector = download.qualitySelector?.trim().orEmpty()
         return when {
-            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "Download direto"
-            selector.isBlank() -> "Formato personalizado"
-            selector == SELECTOR_MP4_1440P -> "MP4 - 1440p"
-            selector == SELECTOR_MP4_1080P -> "MP4 - 1080p"
-            selector == SELECTOR_MP4_720P -> "MP4 - 720p"
-            selector == SELECTOR_MP4_480P -> "MP4 - 480p"
-            selector == SELECTOR_MP3_320K -> "MP3 - 320k"
-            selector == SELECTOR_MP3_256K -> "MP3 - 256k"
-            selector == SELECTOR_MP3_192K -> "MP3 - 192k"
-            selector == SELECTOR_MP3_128K -> "MP3 - 128k"
-            selector in LEGACY_SELECTORS -> "Formato antigo"
-            else -> "Formato personalizado"
+            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> context.getString(R.string.download_direct)
+            selector.isBlank() -> context.getString(R.string.custom_format)
+            selector == SELECTOR_MP4_1440P -> context.getString(R.string.ytdlp_quality_mp4_1440p)
+            selector == SELECTOR_MP4_1080P -> context.getString(R.string.ytdlp_quality_mp4_1080p)
+            selector == SELECTOR_MP4_720P -> context.getString(R.string.ytdlp_quality_mp4_720p)
+            selector == SELECTOR_MP4_480P -> context.getString(R.string.ytdlp_quality_mp4_480p)
+            selector == SELECTOR_MP3_320K -> context.getString(R.string.ytdlp_quality_mp3_320k)
+            selector == SELECTOR_MP3_256K -> context.getString(R.string.ytdlp_quality_mp3_256k)
+            selector == SELECTOR_MP3_192K -> context.getString(R.string.ytdlp_quality_mp3_192k)
+            selector == SELECTOR_MP3_128K -> context.getString(R.string.ytdlp_quality_mp3_128k)
+            selector in LEGACY_SELECTORS -> context.getString(R.string.legacy_format)
+            else -> context.getString(R.string.custom_format)
         }
     }
 
