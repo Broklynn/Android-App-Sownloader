@@ -37,7 +37,6 @@ import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsAdapter
 import com.androiddownload.ui.home.HomeController
-import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -796,29 +795,20 @@ class MainActivity : Activity() {
         url: String,
         homeController: HomeController? = null
     ) {
-        homeController?.setLoading(true)
-        scope.launch {
-            val videoInfo = withContext(Dispatchers.IO) {
-                runCatching { YoutubeDL.getInstance().getInfo(url) }.getOrNull()
-            }
-            val options = YtDlpQualityOptions.build(this@MainActivity, videoInfo)
-            val dialogTitle = YtDlpQualityOptions.displayTitle(videoInfo)
+        val options = YtDlpQualityOptions.build(this@MainActivity, null)
+        val dialogTitle = YtDlpQualityOptions.displayTitle(null)
 
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle(dialogTitle)
-                .setItems(options.map { it.label }.toTypedArray()) { dialog: DialogInterface, which: Int ->
-                    dialog.dismiss()
-                    startQueuedDownload(
-                        url = url,
-                        qualitySelector = options[which].formatSelector,
-                        homeController = homeController
-                    )
-                }
-                .setOnCancelListener {
-                    homeController?.setLoading(false)
-                }
-                .show()
-        }
+        AlertDialog.Builder(this@MainActivity)
+            .setTitle(dialogTitle)
+            .setItems(options.map { it.label }.toTypedArray()) { dialog: DialogInterface, which: Int ->
+                dialog.dismiss()
+                startQueuedDownload(
+                    url = url,
+                    qualitySelector = options[which].formatSelector,
+                    homeController = homeController
+                )
+            }
+            .show()
     }
 
     private fun startQueuedDownload(

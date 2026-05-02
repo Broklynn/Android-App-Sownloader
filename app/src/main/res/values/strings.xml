@@ -122,5 +122,5 @@
     <string name="status_completed">Concluido</string>
     <string name="status_failed">Falhou</string>
     <string name="status_canceled">Cancelado</string>
-    <string name="download_progress_unknown">Calculando</string>
+    <string name="download_progress_unknown">Baixando...</string>
 </resources>

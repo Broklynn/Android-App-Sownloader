@@ -15,6 +15,8 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.core.utils.DownloadSourceClassifier
+import com.androiddownload.download.ytdlp.YtDlpDownloader
+import java.util.Locale
 
 class DownloadNotifier(
     private val context: Context
@@ -48,22 +50,28 @@ class DownloadNotifier(
             .build()
     }
 
-    fun buildProgress(download: DownloadEntity): Notification {
+    fun buildProgress(
+        download: DownloadEntity,
+        progressSnapshot: YtDlpDownloader.ProgressSnapshot? = null
+    ): Notification {
         ensureChannel()
         val running = download.status == DownloadStatus.RUNNING ||
             download.status == DownloadStatus.PREPARING ||
             download.status == DownloadStatus.QUEUED
         val isHttpDownload = DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)
+        val progressValue = resolvedProgress(download, progressSnapshot)
+        val totalBytes = resolvedTotalBytes(download, progressSnapshot)
+        val indeterminate = isHttpDownload && running && totalBytes <= 0 && progressValue <= 0
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(download.fileName)
-            .setContentText(download.status.name)
+            .setContentText(buildContentText(download, progressSnapshot))
             .setContentIntent(downloadsPendingIntent())
             .setAutoCancel(!running)
             .setOngoing(running)
             .setOnlyAlertOnce(true)
-            .setProgress(100, download.progress, download.totalBytes <= 0 && running)
+            .setProgress(100, progressValue, indeterminate)
 
         when {
             download.status == DownloadStatus.RUNNING && isHttpDownload -> {
@@ -83,6 +91,60 @@ class DownloadNotifier(
         }
 
         return builder.build()
+    }
+
+    private fun buildContentText(
+        download: DownloadEntity,
+        progressSnapshot: YtDlpDownloader.ProgressSnapshot?
+    ): String {
+        return when (download.status) {
+            DownloadStatus.COMPLETED -> context.getString(R.string.status_completed)
+            DownloadStatus.FAILED -> context.getString(R.string.status_failed)
+            DownloadStatus.CANCELED -> context.getString(R.string.status_canceled)
+            DownloadStatus.PAUSED -> context.getString(R.string.status_paused)
+            DownloadStatus.RUNNING,
+            DownloadStatus.PREPARING,
+            DownloadStatus.QUEUED -> {
+                val percent = resolvedProgress(download, progressSnapshot)
+                if (!DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
+                    progressSnapshot?.etaSeconds?.takeIf { it >= 0 }?.let {
+                        "$percent% \u00b7 ${formatEta(it)}"
+                    } ?: "$percent%"
+                } else if (percent > 0) {
+                    progressSnapshot?.etaSeconds?.takeIf { it >= 0 }?.let {
+                        "$percent% \u00b7 ${formatEta(it)}"
+                    } ?: "$percent%"
+                } else {
+                    context.getString(R.string.download_progress_unknown)
+                }
+            }
+        }
+    }
+
+    private fun formatEta(seconds: Long): String {
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format(Locale.US, "%02d:%02d", minutes, remainingSeconds)
+    }
+
+    private fun resolvedProgress(
+        download: DownloadEntity,
+        progressSnapshot: YtDlpDownloader.ProgressSnapshot?
+    ): Int {
+        val snapshotPercent = progressSnapshot?.percent?.coerceIn(0, 100) ?: -1
+        return when {
+            snapshotPercent >= 0 -> snapshotPercent
+            else -> download.progress.coerceIn(0, 100)
+        }
+    }
+
+    private fun resolvedTotalBytes(
+        download: DownloadEntity,
+        progressSnapshot: YtDlpDownloader.ProgressSnapshot?
+    ): Long {
+        return progressSnapshot?.totalBytes?.takeIf { it > 0 }
+            ?: download.totalBytes.takeIf { it > 0 }
+            ?: -1
     }
 
     private fun downloadsPendingIntent(): PendingIntent {

@@ -81,9 +81,10 @@ class DownloadForegroundService : Service() {
                         formatSelector = download.qualitySelector ?: "best"
                     ) {
                         app.container.repository.getById(downloadId)?.let { current ->
+                            val progressSnapshot = app.container.ytDlpDownloader.getProgressSnapshot(downloadId)
                             app.container.notifier.notify(
                                 FOREGROUND_NOTIFICATION_ID,
-                                app.container.notifier.buildProgress(current)
+                                app.container.notifier.buildProgress(current, progressSnapshot)
                             )
                         }
                     }
@@ -122,9 +123,10 @@ class DownloadForegroundService : Service() {
         scope.launch {
             app.container.repository.markPaused(downloadId)
             app.container.repository.getById(downloadId)?.let { current ->
+                val progressSnapshot = app.container.ytDlpDownloader.getProgressSnapshot(downloadId)
                 app.container.notifier.notify(
                     FOREGROUND_NOTIFICATION_ID,
-                    app.container.notifier.buildProgress(current)
+                    app.container.notifier.buildProgress(current, progressSnapshot)
                 )
             }
             finishIfIdle(downloadId)
@@ -143,9 +145,10 @@ class DownloadForegroundService : Service() {
                 DownloadStatus.PAUSED,
                 DownloadStatus.COMPLETED -> {
                     download?.let {
+                        val progressSnapshot = app.container.ytDlpDownloader.getProgressSnapshot(downloadId)
                         app.container.notifier.notify(
                             FOREGROUND_NOTIFICATION_ID,
-                            app.container.notifier.buildProgress(it)
+                            app.container.notifier.buildProgress(it, progressSnapshot)
                         )
                     }
                     stopForegroundIfStarted(STOP_FOREGROUND_DETACH)
@@ -165,7 +168,10 @@ class DownloadForegroundService : Service() {
         val download = app.container.repository.getById(runningId) ?: return
         app.container.notifier.notify(
             FOREGROUND_NOTIFICATION_ID,
-            app.container.notifier.buildProgress(download)
+            app.container.notifier.buildProgress(
+                download,
+                app.container.ytDlpDownloader.getProgressSnapshot(runningId)
+            )
         )
     }
 

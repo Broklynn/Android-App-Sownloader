@@ -93,7 +93,7 @@ class DownloadsAdapter(
             progressBar.progress = progress
             progressText.text = progressLabel(indeterminate, progress)
             sizeText.text = buildSizeText(download)
-            speedText.text = FileSizeFormatter.formatSpeed(download.speed)
+            speedText.text = FileSizeFormatter.formatSpeed(download.speed).ifBlank { "N/D" }
             val actionConfig = actionConfig(download)
             actionButton.visibility = if (actionConfig != null) View.VISIBLE else View.GONE
             actionButton.isEnabled = actionConfig != null
@@ -131,7 +131,9 @@ class DownloadsAdapter(
         }
 
         private fun isIndeterminate(download: DownloadEntity): Boolean {
-            return download.totalBytes <= 0 &&
+            return DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
+                download.totalBytes <= 0 &&
+                download.progress <= 0 &&
                 (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
         }
 
@@ -211,9 +213,21 @@ class DownloadsAdapter(
         }
 
         private fun buildSizeText(download: DownloadEntity): String {
-            val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
-            val total = FileSizeFormatter.formatBytes(download.totalBytes)
-            return "$downloaded / $total"
+            return when {
+                download.totalBytes > 0 -> {
+                    val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
+                    val total = FileSizeFormatter.formatBytes(download.totalBytes)
+                    "$downloaded / $total"
+                }
+                download.status == DownloadStatus.RUNNING ||
+                    download.status == DownloadStatus.PREPARING ||
+                    download.status == DownloadStatus.QUEUED -> {
+                    root.context.getString(R.string.download_progress_unknown)
+                }
+                download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
+                download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
+                else -> root.context.getString(R.string.download_progress_unknown)
+            }
         }
     }
 }

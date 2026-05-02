@@ -22,18 +22,32 @@ import java.io.File
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 class YtDlpDownloader(
     private val context: Context,
     private val repository: DownloadRepository
 ) {
     private val activeProcessIds = ConcurrentHashMap<Long, String>()
+    private val progressStates = ConcurrentHashMap<Long, ProgressSnapshot>()
+    private val downloadTotalRegex = Regex("""of\s+~?([\d.]+)\s*([KMGTPE]?i?B)""", RegexOption.IGNORE_CASE)
+    private val downloadSpeedRegex = Regex("""at\s+([\d.]+)\s*([KMGTPE]?i?B/s)""", RegexOption.IGNORE_CASE)
+    private val progressUpdateIntervalMs = 500L
 
     @Volatile
     private var initialized = false
 
     @Volatile
     private var updateAttempted = false
+
+    data class ProgressSnapshot(
+        val percent: Int = 0,
+        val downloadedBytes: Long = -1,
+        val totalBytes: Long = -1,
+        val speedBytesPerSecond: Long = -1,
+        val etaSeconds: Long = -1,
+        val lastUpdatedAt: Long = 0L
+    )
 
     fun initialize() {
         if (initialized) return
@@ -87,6 +101,7 @@ class YtDlpDownloader(
             }
 
             repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+            progressStates[downloadId] = ProgressSnapshot(lastUpdatedAt = System.currentTimeMillis())
 
             val processId = downloadId.toString()
             activeProcessIds[downloadId] = processId
@@ -145,6 +160,7 @@ class YtDlpDownloader(
                 YoutubeDL.getInstance().destroyProcessById(processId)
             }
         }
+        progressStates.remove(downloadId)
         createTempDir(downloadId).deleteRecursively()
     }
 
@@ -208,23 +224,134 @@ class YtDlpDownloader(
         YoutubeDL.getInstance().execute(
             request = request,
             processId = processId
-        ) { progress: Float, _, _ ->
+        ) { progress: Float, etaSeconds: Long, line: String ->
             runBlocking {
                 val latest = repository.getById(downloadId) ?: return@runBlocking
-                repository.update(
-                    latest.copy(
-                        tempPath = tempDir.absolutePath,
-                        progress = progress.toInt().coerceIn(0, 100),
-                        status = DownloadStatus.RUNNING,
-                        errorMessage = null
-                    )
+                val previousState = progressStates[downloadId]
+                val snapshot = parseProgressSnapshot(progress, etaSeconds, line, previousState)
+                val now = System.currentTimeMillis()
+                val updatedSnapshot = snapshot.copy(lastUpdatedAt = now)
+                progressStates[downloadId] = updatedSnapshot
+
+                if (!shouldPersistProgress(previousState, updatedSnapshot)) {
+                    if (shouldNotifyProgress(previousState, updatedSnapshot, now)) {
+                        onProgress()
+                    }
+                    return@runBlocking
+                }
+
+                val updatedDownload = latest.copy(
+                    tempPath = tempDir.absolutePath,
+                    progress = updatedSnapshot.percent.coerceIn(0, 100),
+                    downloadedBytes = if (updatedSnapshot.downloadedBytes >= 0) {
+                        updatedSnapshot.downloadedBytes
+                    } else {
+                        latest.downloadedBytes
+                    },
+                    totalBytes = if (updatedSnapshot.totalBytes >= 0) {
+                        updatedSnapshot.totalBytes
+                    } else {
+                        latest.totalBytes
+                    },
+                    speed = if (updatedSnapshot.speedBytesPerSecond >= 0) {
+                        updatedSnapshot.speedBytesPerSecond
+                    } else {
+                        latest.speed
+                    },
+                    status = DownloadStatus.RUNNING,
+                    errorMessage = null
                 )
-                onProgress()
+                repository.update(updatedDownload)
+                if (shouldNotifyProgress(previousState, updatedSnapshot, now)) {
+                    onProgress()
+                }
             }
         }
 
         currentCoroutineContext().ensureActive()
         finalizeDownload(downloadId, current, tempDir)
+    }
+
+    fun getProgressSnapshot(downloadId: Long): ProgressSnapshot? {
+        return progressStates[downloadId]
+    }
+
+    private fun shouldPersistProgress(
+        previous: ProgressSnapshot?,
+        current: ProgressSnapshot
+    ): Boolean {
+        if (previous == null) return true
+        if (current.percent != previous.percent) return true
+        if (current.downloadedBytes != previous.downloadedBytes) return true
+        if (current.totalBytes != previous.totalBytes) return true
+        if (current.speedBytesPerSecond != previous.speedBytesPerSecond) return true
+        return current.lastUpdatedAt - previous.lastUpdatedAt >= progressUpdateIntervalMs
+    }
+
+    private fun shouldNotifyProgress(
+        previous: ProgressSnapshot?,
+        current: ProgressSnapshot,
+        now: Long
+    ): Boolean {
+        if (previous == null) return true
+        if (current.percent != previous.percent) return true
+        if (current.downloadedBytes != previous.downloadedBytes) return true
+        if (current.totalBytes != previous.totalBytes) return true
+        if (current.speedBytesPerSecond != previous.speedBytesPerSecond) return true
+        if (current.etaSeconds != previous.etaSeconds) return true
+        return now - previous.lastUpdatedAt >= progressUpdateIntervalMs
+    }
+
+    private fun parseProgressSnapshot(
+        progress: Float,
+        etaSeconds: Long,
+        line: String,
+        previous: ProgressSnapshot?
+    ): ProgressSnapshot {
+        val percent = if (progress >= 0f) {
+            progress.roundToInt().coerceIn(0, 100)
+        } else {
+            previous?.percent ?: 0
+        }
+        val totalBytes = parseTotalBytes(line) ?: previous?.totalBytes ?: -1
+        val speedBytesPerSecond = parseSpeedBytes(line) ?: previous?.speedBytesPerSecond ?: -1
+        val downloadedBytes = when {
+            totalBytes > 0 -> ((totalBytes * percent) / 100.0).toLong().coerceAtLeast(0)
+            previous != null -> previous.downloadedBytes
+            else -> -1
+        }
+
+        return ProgressSnapshot(
+            percent = percent,
+            downloadedBytes = downloadedBytes,
+            totalBytes = totalBytes,
+            speedBytesPerSecond = speedBytesPerSecond,
+            etaSeconds = etaSeconds
+        )
+    }
+
+    private fun parseTotalBytes(line: String): Long? {
+        val match = downloadTotalRegex.find(line) ?: return null
+        return parseByteValue(match.groupValues[1], match.groupValues[2])
+    }
+
+    private fun parseSpeedBytes(line: String): Long? {
+        val match = downloadSpeedRegex.find(line) ?: return null
+        return parseByteValue(match.groupValues[1], match.groupValues[2].removeSuffix("/s"))
+    }
+
+    private fun parseByteValue(valueText: String, unitText: String): Long? {
+        val value = valueText.toDoubleOrNull() ?: return null
+        val unit = unitText.trim().uppercase(Locale.US)
+        val multiplier = when (unit) {
+            "B" -> 1L
+            "KB", "KIB" -> 1024L
+            "MB", "MIB" -> 1024L * 1024L
+            "GB", "GIB" -> 1024L * 1024L * 1024L
+            "TB", "TIB" -> 1024L * 1024L * 1024L * 1024L
+            else -> return null
+        }
+        return (value * multiplier).toLong()
     }
 
     private suspend fun finalizeDownload(
@@ -242,6 +369,7 @@ class YtDlpDownloader(
             outputFile.delete()
         }
         tempDir.deleteRecursively()
+        progressStates.remove(downloadId)
         val fileBytes = finalFile.length().takeIf { it > 0 } ?: current.downloadedBytes
 
         repository.update(
@@ -267,6 +395,7 @@ class YtDlpDownloader(
         exception: Exception
     ) {
         val message = buildErrorMessage(current, exception)
+        progressStates.remove(downloadId)
         repository.update(
             current.copy(
                 tempPath = null,
