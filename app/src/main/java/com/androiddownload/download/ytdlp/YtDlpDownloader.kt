@@ -42,19 +42,24 @@ class YtDlpDownloader(
             try {
                 FFmpeg.getInstance().init(context.applicationContext)
                 YoutubeDL.getInstance().init(context.applicationContext)
-                if (!updateAttempted) {
-                    updateAttempted = true
-                    runCatching {
-                        YoutubeDL.getInstance().updateYoutubeDL(
-                            context.applicationContext,
-                            YoutubeDL.UpdateChannel.NIGHTLY
-                        )
-                    }
-                }
+                updateBinaryOnce()
                 initialized = true
             } catch (_: YoutubeDLException) {
                 initialized = false
             }
+        }
+    }
+
+    suspend fun updateManually(): Boolean {
+        return withContext(Dispatchers.IO) {
+            initialize()
+            if (!initialized) return@withContext false
+            runCatching {
+                YoutubeDL.getInstance().updateYoutubeDL(
+                    context.applicationContext,
+                    YoutubeDL.UpdateChannel.NIGHTLY
+                )
+            }.isSuccess
         }
     }
 
@@ -377,6 +382,17 @@ class YtDlpDownloader(
             selector == YtDlpQualityOptions.SELECTOR_MP4_1080P ||
             selector == YtDlpQualityOptions.SELECTOR_MP4_720P ||
             selector == YtDlpQualityOptions.SELECTOR_MP4_480P
+    }
+
+    private fun updateBinaryOnce() {
+        if (updateAttempted) return
+        updateAttempted = true
+        runCatching {
+            YoutubeDL.getInstance().updateYoutubeDL(
+                context.applicationContext,
+                YoutubeDL.UpdateChannel.NIGHTLY
+            )
+        }
     }
 
     private fun isYoutubeUrl(url: String): Boolean {

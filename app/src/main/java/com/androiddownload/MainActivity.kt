@@ -12,6 +12,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Environment
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -19,6 +20,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -62,6 +64,9 @@ class MainActivity : Activity() {
     private lateinit var settingsContainer: View
     private lateinit var emptyDownloadsText: TextView
     private lateinit var clearFinishedButton: Button
+    private lateinit var downloadLocationText: TextView
+    private lateinit var ytdlpUpdateStatusText: TextView
+    private lateinit var updateYtDlpButton: Button
     private lateinit var homeController: HomeController
     private lateinit var adapter: DownloadsAdapter
     private lateinit var homeTabButton: Button
@@ -81,6 +86,9 @@ class MainActivity : Activity() {
     private lateinit var browserErrorText: TextView
     private lateinit var browserWebView: WebView
     private var browserPageLoading = false
+    private var hasActiveDownloads = false
+    private var ytDlpUpdateInProgress = false
+    private var ytDlpUpdateMessage: String? = null
     private val detectedMediaLock = Any()
     private val detectedMediaCandidates = LinkedHashMap<String, MediaCandidate>()
     private val settingsPreferences: SharedPreferences
@@ -106,6 +114,9 @@ class MainActivity : Activity() {
         settingsContainer = findViewById(R.id.settingsContainer)
         emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
         clearFinishedButton = findViewById(R.id.clearFinishedButton)
+        downloadLocationText = findViewById(R.id.downloadLocationText)
+        ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
+        updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         browserTabButton = findViewById(R.id.browserTabButton)
@@ -143,6 +154,9 @@ class MainActivity : Activity() {
             },
             onOpenClick = { download ->
                 openCompletedDownload(download)
+            },
+            onShareClick = { download ->
+                shareCompletedDownload(download)
             }
         )
         findViewById<ListView>(R.id.downloadsList).adapter = adapter
@@ -174,6 +188,7 @@ class MainActivity : Activity() {
         browserDownloadButton.setOnClickListener { downloadCurrentBrowserPage() }
         browserDetectedMediaButton.setOnClickListener { showDetectedMediaDialog() }
         clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
+        updateYtDlpButton.setOnClickListener { updateYtDlpManually() }
 
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             handleDownloadRequest(
@@ -187,10 +202,15 @@ class MainActivity : Activity() {
             app.container.repository.observeDownloads().collectLatest { downloads ->
                 adapter.submitList(downloads)
                 emptyDownloadsText.visibility = if (downloads.isEmpty()) View.VISIBLE else View.GONE
+                hasActiveDownloads = downloads.any {
+                    it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PREPARING
+                }
+                updateYtDlpUpdateUiState()
             }
         }
 
         updateDefaultQualityText()
+        updateDownloadLocationText()
         showHome()
         handleIntent(intent)
     }
@@ -268,18 +288,47 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             setTextColor(getColor(R.color.text_secondary))
             textSize = 13f
-            setPadding(padding, padding, padding, padding)
+            setPadding(0, 0, 0, padding)
             text = buildDownloadDetailsText(download)
         }
 
-        return ScrollView(this).apply {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding, padding, padding)
             addView(
-                textView,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ScrollView(context).apply {
+                    addView(
+                        textView,
+                        ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
+
+            if (download.status == DownloadStatus.COMPLETED) {
+                addView(
+                    Button(context).apply {
+                        text = getString(R.string.details_share)
+                        setTextColor(getColor(R.color.button_secondary_text))
+                        setBackgroundResource(R.drawable.bg_button_secondary)
+                        setOnClickListener {
+                            shareCompletedDownload(download)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = padding
+                    }
+                )
+            }
         }
     }
 
@@ -376,7 +425,64 @@ class MainActivity : Activity() {
         downloadsContainer.visibility = View.GONE
         settingsContainer.visibility = View.VISIBLE
         updateDefaultQualityText()
+        updateDownloadLocationText()
+        updateYtDlpUpdateUiState()
         updateSelectedTab(settingsTabButton)
+    }
+
+    private fun updateDownloadLocationText() {
+        downloadLocationText.text = getPreferredDownloadDirectory().absolutePath
+    }
+
+    private fun getPreferredDownloadDirectory(): File {
+        return getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: File(filesDir, "downloads")
+    }
+
+    private fun updateYtDlpManually() {
+        if (ytDlpUpdateInProgress) return
+        if (hasActiveDownloads) {
+            showToast(getString(R.string.update_ytdlp_busy))
+            updateYtDlpUpdateUiState()
+            return
+        }
+
+        ytDlpUpdateInProgress = true
+        ytDlpUpdateMessage = null
+        updateYtDlpUpdateUiState()
+
+        scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                app.container.ytDlpDownloader.updateManually()
+            }
+            ytDlpUpdateInProgress = false
+            ytDlpUpdateMessage = getString(
+                if (success) R.string.update_ytdlp_success else R.string.update_ytdlp_failed
+            )
+            updateYtDlpUpdateUiState()
+        }
+    }
+
+    private fun updateYtDlpUpdateUiState() {
+        val enabled = !ytDlpUpdateInProgress && !hasActiveDownloads
+        updateYtDlpButton.isEnabled = enabled
+        when {
+            ytDlpUpdateInProgress -> {
+                ytdlpUpdateStatusText.visibility = View.VISIBLE
+                ytdlpUpdateStatusText.text = getString(R.string.update_ytdlp_in_progress)
+            }
+            ytDlpUpdateMessage != null -> {
+                ytdlpUpdateStatusText.visibility = View.VISIBLE
+                ytdlpUpdateStatusText.text = ytDlpUpdateMessage
+            }
+            hasActiveDownloads -> {
+                ytdlpUpdateStatusText.visibility = View.VISIBLE
+                ytdlpUpdateStatusText.text = getString(R.string.update_ytdlp_busy)
+            }
+            else -> {
+                ytdlpUpdateStatusText.visibility = View.GONE
+            }
+        }
     }
 
     private fun updateSelectedTab(selectedTab: Button) {
@@ -978,6 +1084,46 @@ class MainActivity : Activity() {
             showToast(getString(R.string.download_no_app_found))
         } catch (exception: RuntimeException) {
             showToast(getString(R.string.download_open_error))
+        }
+    }
+
+    private fun shareCompletedDownload(download: DownloadEntity) {
+        if (download.status != DownloadStatus.COMPLETED) return
+
+        val shareUri = try {
+            resolveOpenUri(download)
+        } catch (exception: IllegalArgumentException) {
+            null
+        }
+
+        if (shareUri == null) {
+            showToast(getString(R.string.share_file_not_found))
+            return
+        }
+
+        val mimeType = normalizeMimeType(download.mimeType)
+            ?: contentResolver.getType(shareUri)
+            ?: inferMimeType(download.fileName)
+            ?: "application/octet-stream"
+
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, shareUri)
+            clipData = ClipData.newUri(contentResolver, download.fileName, shareUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        if (packageManager.queryIntentActivities(sendIntent, PackageManager.MATCH_DEFAULT_ONLY).isEmpty()) {
+            showToast(getString(R.string.share_no_app_found))
+            return
+        }
+
+        try {
+            startActivity(Intent.createChooser(sendIntent, getString(R.string.share_file_chooser)))
+        } catch (exception: ActivityNotFoundException) {
+            showToast(getString(R.string.share_no_app_found))
+        } catch (exception: RuntimeException) {
+            showToast(getString(R.string.share_open_error))
         }
     }
 

@@ -22,7 +22,8 @@ class DownloadsAdapter(
     private val onPauseClick: (DownloadEntity) -> Unit,
     private val onResumeClick: (DownloadEntity) -> Unit,
     private val onRetryClick: (DownloadEntity) -> Unit,
-    private val onOpenClick: (DownloadEntity) -> Unit
+    private val onOpenClick: (DownloadEntity) -> Unit,
+    private val onShareClick: (DownloadEntity) -> Unit
 ) : BaseAdapter() {
     private val inflater = LayoutInflater.from(context)
     private val items = mutableListOf<DownloadEntity>()
@@ -48,7 +49,8 @@ class DownloadsAdapter(
             onPauseClick,
             onResumeClick,
             onRetryClick,
-            onOpenClick
+            onOpenClick,
+            onShareClick
         ).also { view.tag = it }
         holder.bind(getItem(position))
         return view
@@ -61,7 +63,8 @@ class DownloadsAdapter(
         private val onPauseClick: (DownloadEntity) -> Unit,
         private val onResumeClick: (DownloadEntity) -> Unit,
         private val onRetryClick: (DownloadEntity) -> Unit,
-        private val onOpenClick: (DownloadEntity) -> Unit
+        private val onOpenClick: (DownloadEntity) -> Unit,
+        private val onShareClick: (DownloadEntity) -> Unit
     ) {
         private val root: View = view
         private val fileNameText: TextView = view.findViewById(R.id.fileNameText)
@@ -73,6 +76,7 @@ class DownloadsAdapter(
         private val speedText: TextView = view.findViewById(R.id.speedText)
         private val actionButton: Button = view.findViewById(R.id.actionButton)
         private val openButton: Button = view.findViewById(R.id.openButton)
+        private val shareButton: Button = view.findViewById(R.id.shareButton)
         private val cancelButton: Button = view.findViewById(R.id.cancelButton)
         private val errorText: TextView = view.findViewById(R.id.errorText)
 
@@ -108,6 +112,12 @@ class DownloadsAdapter(
             openButton.isEnabled = canOpen
             openButton.setOnClickListener {
                 onOpenClick(download)
+            }
+            val canShare = download.status == DownloadStatus.COMPLETED
+            shareButton.visibility = if (canShare) View.VISIBLE else View.GONE
+            shareButton.isEnabled = canShare
+            shareButton.setOnClickListener {
+                onShareClick(download)
             }
             root.isClickable = true
             root.setOnClickListener { onItemClick(download) }
