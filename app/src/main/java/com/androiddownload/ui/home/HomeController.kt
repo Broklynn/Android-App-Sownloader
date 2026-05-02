@@ -24,6 +24,12 @@ class HomeController(
         errorText.visibility = View.VISIBLE
     }
 
+    fun setUrl(url: String) {
+        urlInput.setText(url)
+        urlInput.setSelection(urlInput.text.length)
+        errorText.visibility = View.GONE
+    }
+
     fun setLoading(isLoading: Boolean) {
         downloadButton.isEnabled = !isLoading
         urlInput.isEnabled = !isLoading

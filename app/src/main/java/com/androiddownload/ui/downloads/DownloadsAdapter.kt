@@ -17,6 +17,7 @@ import com.androiddownload.core.utils.YtDlpQualityOptions
 
 class DownloadsAdapter(
     context: Context,
+    private val onItemClick: (DownloadEntity) -> Unit,
     private val onCancelClick: (DownloadEntity) -> Unit,
     private val onPauseClick: (DownloadEntity) -> Unit,
     private val onResumeClick: (DownloadEntity) -> Unit,
@@ -42,6 +43,7 @@ class DownloadsAdapter(
         val view = convertView ?: inflater.inflate(R.layout.item_download, parent, false)
         val holder = view.tag as? ViewHolder ?: ViewHolder(
             view,
+            onItemClick,
             onCancelClick,
             onPauseClick,
             onResumeClick,
@@ -54,6 +56,7 @@ class DownloadsAdapter(
 
     private class ViewHolder(
         view: View,
+        private val onItemClick: (DownloadEntity) -> Unit,
         private val onCancelClick: (DownloadEntity) -> Unit,
         private val onPauseClick: (DownloadEntity) -> Unit,
         private val onResumeClick: (DownloadEntity) -> Unit,
@@ -106,14 +109,8 @@ class DownloadsAdapter(
             openButton.setOnClickListener {
                 onOpenClick(download)
             }
-            root.isClickable = canOpen
-            root.setOnClickListener(
-                if (canOpen) {
-                    View.OnClickListener { onOpenClick(download) }
-                } else {
-                    null
-                }
-            )
+            root.isClickable = true
+            root.setOnClickListener { onItemClick(download) }
 
             if (download.status == DownloadStatus.FAILED && !download.errorMessage.isNullOrBlank()) {
                 errorText.text = download.errorMessage

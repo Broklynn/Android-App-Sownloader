@@ -11,6 +11,10 @@ class DownloadRepository(
 ) {
     fun observeDownloads(): Flow<List<DownloadEntity>> = dao.observeDownloads()
 
+    suspend fun getByStatuses(statuses: List<DownloadStatus>): List<DownloadEntity> {
+        return dao.getByStatuses(statuses.map { it.name })
+    }
+
     suspend fun enqueue(
         sourceUrl: String,
         qualitySelector: String? = null
@@ -83,5 +87,29 @@ class DownloadRepository(
                 updatedAt = System.currentTimeMillis()
             )
         )
+    }
+
+    suspend fun removeFinalizedDownloads(): List<DownloadEntity> {
+        val finalizedStatuses = listOf(
+            DownloadStatus.COMPLETED,
+            DownloadStatus.CANCELED,
+            DownloadStatus.FAILED
+        )
+        val finalizedDownloads = getByStatuses(finalizedStatuses)
+        finalizedDownloads.forEach { download ->
+            if (download.status != DownloadStatus.COMPLETED) {
+                deleteTempPath(download.tempPath)
+            }
+        }
+        dao.deleteByStatuses(finalizedStatuses.map { it.name })
+        return finalizedDownloads
+    }
+
+    private fun deleteTempPath(tempPath: String?) {
+        val path = tempPath?.trim().orEmpty()
+        if (path.isBlank()) return
+        runCatching {
+            java.io.File(path).deleteRecursively()
+        }
     }
 }

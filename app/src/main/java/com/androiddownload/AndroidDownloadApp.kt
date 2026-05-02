@@ -1,6 +1,7 @@
 package com.androiddownload
 
 import android.app.Application
+import kotlinx.coroutines.runBlocking
 
 class AndroidDownloadApp : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
@@ -9,6 +10,9 @@ class AndroidDownloadApp : Application() {
         super.onCreate()
         Thread {
             runCatching {
+                runBlocking {
+                    container.downloadStartupMaintenance.recoverAndClean()
+                }
                 container.ytDlpDownloader.initialize()
             }
         }.start()

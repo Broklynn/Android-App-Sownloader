@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.androiddownload.core.database.AppDatabase
 import com.androiddownload.download.data.DownloadRepository
 import com.androiddownload.download.http.HttpDownloader
+import com.androiddownload.download.maintenance.DownloadStartupMaintenance
 import com.androiddownload.download.notification.DownloadNotifier
 import com.androiddownload.download.queue.DownloadQueue
 import com.androiddownload.download.ytdlp.YtDlpDownloader
@@ -43,4 +44,9 @@ class AppContainer(context: Context) {
     )
 
     val queue: DownloadQueue = DownloadQueue(repository)
+
+    val downloadStartupMaintenance: DownloadStartupMaintenance = DownloadStartupMaintenance(
+        context = appContext,
+        repository = repository
+    )
 }

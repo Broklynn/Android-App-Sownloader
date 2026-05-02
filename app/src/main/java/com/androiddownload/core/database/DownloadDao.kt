@@ -16,6 +16,9 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): DownloadEntity?
 
+    @Query("SELECT * FROM downloads WHERE status IN (:statuses)")
+    suspend fun getByStatuses(statuses: List<String>): List<DownloadEntity>
+
     @Insert
     suspend fun insert(download: DownloadEntity): Long
 
@@ -37,4 +40,7 @@ interface DownloadDao {
         errorMessage: String?,
         updatedAt: Long
     )
+
+    @Query("DELETE FROM downloads WHERE status IN (:statuses)")
+    suspend fun deleteByStatuses(statuses: List<String>): Int
 }

@@ -121,6 +121,12 @@ class DownloadForegroundService : Service() {
 
         scope.launch {
             app.container.repository.markPaused(downloadId)
+            app.container.repository.getById(downloadId)?.let { current ->
+                app.container.notifier.notify(
+                    FOREGROUND_NOTIFICATION_ID,
+                    app.container.notifier.buildProgress(current)
+                )
+            }
             finishIfIdle(downloadId)
         }
     }
@@ -128,14 +134,25 @@ class DownloadForegroundService : Service() {
     private suspend fun finishIfIdle(downloadId: Long) {
         val download = app.container.repository.getById(downloadId)
         if (runningJobs.isEmpty()) {
-            if (download?.status == DownloadStatus.CANCELED ||
-                download?.status == DownloadStatus.PAUSED ||
-                download?.status == DownloadStatus.FAILED
-            ) {
-                stopForegroundIfStarted(STOP_FOREGROUND_REMOVE)
-                app.container.notifier.cancel(FOREGROUND_NOTIFICATION_ID)
-            } else {
-                stopForegroundIfStarted(STOP_FOREGROUND_DETACH)
+            when (download?.status) {
+                DownloadStatus.CANCELED,
+                DownloadStatus.FAILED -> {
+                    stopForegroundIfStarted(STOP_FOREGROUND_REMOVE)
+                    app.container.notifier.cancel(FOREGROUND_NOTIFICATION_ID)
+                }
+                DownloadStatus.PAUSED,
+                DownloadStatus.COMPLETED -> {
+                    download?.let {
+                        app.container.notifier.notify(
+                            FOREGROUND_NOTIFICATION_ID,
+                            app.container.notifier.buildProgress(it)
+                        )
+                    }
+                    stopForegroundIfStarted(STOP_FOREGROUND_DETACH)
+                }
+                else -> {
+                    stopForegroundIfStarted(STOP_FOREGROUND_DETACH)
+                }
             }
             stopSelf()
         } else {
@@ -169,13 +186,13 @@ class DownloadForegroundService : Service() {
         get() = application as AndroidDownloadApp
 
     companion object {
-        private const val EXTRA_DOWNLOAD_ID = "download_id"
+        const val EXTRA_DOWNLOAD_ID = "download_id"
         private const val FOREGROUND_NOTIFICATION_ID = 2001
-        private const val ACTION_START = "com.androiddownload.action.START_DOWNLOAD"
-        private const val ACTION_CANCEL = "com.androiddownload.action.CANCEL_DOWNLOAD"
-        private const val ACTION_PAUSE = "com.androiddownload.action.PAUSE_DOWNLOAD"
-        private const val ACTION_RESUME = "com.androiddownload.action.RESUME_DOWNLOAD"
-        private const val ACTION_RETRY = "com.androiddownload.action.RETRY_DOWNLOAD"
+        const val ACTION_START = "com.androiddownload.action.START_DOWNLOAD"
+        const val ACTION_CANCEL = "com.androiddownload.action.CANCEL_DOWNLOAD"
+        const val ACTION_PAUSE = "com.androiddownload.action.PAUSE_DOWNLOAD"
+        const val ACTION_RESUME = "com.androiddownload.action.RESUME_DOWNLOAD"
+        const val ACTION_RETRY = "com.androiddownload.action.RETRY_DOWNLOAD"
 
         fun start(context: Context, downloadId: Long) {
             val intent = Intent(context, DownloadForegroundService::class.java)

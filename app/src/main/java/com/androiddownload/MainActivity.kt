@@ -3,6 +3,8 @@ package com.androiddownload
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.DialogInterface
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -13,15 +15,18 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ScrollView
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.UrlValidator
 import com.androiddownload.core.utils.YtDlpQualityOptions
@@ -36,6 +41,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
 import java.io.File
 import java.util.Locale
 import android.webkit.CookieManager
@@ -55,6 +61,8 @@ class MainActivity : Activity() {
     private lateinit var downloadsContainer: View
     private lateinit var settingsContainer: View
     private lateinit var emptyDownloadsText: TextView
+    private lateinit var clearFinishedButton: Button
+    private lateinit var homeController: HomeController
     private lateinit var adapter: DownloadsAdapter
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
@@ -86,7 +94,7 @@ class MainActivity : Activity() {
         requestNotificationPermission()
 
         val app = application as AndroidDownloadApp
-        val homeController = HomeController(
+        homeController = HomeController(
             urlInput = findViewById(R.id.urlInput),
             downloadButton = findViewById(R.id.downloadButton),
             errorText = findViewById(R.id.urlErrorText)
@@ -97,6 +105,7 @@ class MainActivity : Activity() {
         downloadsContainer = findViewById(R.id.downloadsContainer)
         settingsContainer = findViewById(R.id.settingsContainer)
         emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
+        clearFinishedButton = findViewById(R.id.clearFinishedButton)
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         browserTabButton = findViewById(R.id.browserTabButton)
@@ -117,6 +126,9 @@ class MainActivity : Activity() {
 
         adapter = DownloadsAdapter(
             context = this,
+            onItemClick = { download ->
+                showDownloadDetailsDialog(download)
+            },
             onCancelClick = { download ->
                 DownloadForegroundService.cancel(this, download.id)
             },
@@ -161,6 +173,7 @@ class MainActivity : Activity() {
         }
         browserDownloadButton.setOnClickListener { downloadCurrentBrowserPage() }
         browserDetectedMediaButton.setOnClickListener { showDetectedMediaDialog() }
+        clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
 
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             handleDownloadRequest(
@@ -216,6 +229,139 @@ class MainActivity : Activity() {
         updateSelectedTab(downloadsTabButton)
     }
 
+    private fun showClearFinishedDownloadsDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.clear_finished_downloads_title))
+            .setMessage(getString(R.string.clear_finished_downloads_message))
+            .setPositiveButton(android.R.string.ok) { dialog: DialogInterface, _: Int ->
+                dialog.dismiss()
+                clearFinishedDownloads()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showDownloadDetailsDialog(download: DownloadEntity) {
+        val contentView = buildDownloadDetailsView(download)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(download.fileName)
+            .setView(contentView)
+            .setPositiveButton(R.string.details_copy_url) { dialog: DialogInterface, _: Int ->
+                copyDownloadUrl(download)
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.details_close, null)
+
+        if (download.status == DownloadStatus.COMPLETED) {
+            dialog.setNeutralButton(getString(R.string.open)) { dialog: DialogInterface, _: Int ->
+                dialog.dismiss()
+                openCompletedDownload(download)
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun buildDownloadDetailsView(download: DownloadEntity): View {
+        val padding = (16 * resources.displayMetrics.density).toInt()
+        val textView = TextView(this).apply {
+            setTextIsSelectable(true)
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 13f
+            setPadding(padding, padding, padding, padding)
+            text = buildDownloadDetailsText(download)
+        }
+
+        return ScrollView(this).apply {
+            addView(
+                textView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+    }
+
+    private fun buildDownloadDetailsText(download: DownloadEntity): String {
+        val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM)
+        val details = linkedMapOf(
+            "Nome do arquivo" to download.fileName,
+            "Status" to downloadStatusLabel(download.status),
+            "Formato/qualidade" to formatLabelForDetails(download),
+            "URL original" to download.sourceUrl,
+            "Baixado" to buildDownloadSizeText(download),
+            "Progresso" to progressLabelForDetails(download),
+            "Velocidade" to formatSpeedForDetails(download.speed),
+            "Erro" to (download.errorMessage?.takeIf { it.isNotBlank() } ?: "Nenhum"),
+            "URI final" to (download.destinationUri?.takeIf { it.isNotBlank() } ?: "N/D"),
+            "Criado em" to dateFormat.format(java.util.Date(download.createdAt)),
+            "Atualizado em" to dateFormat.format(java.util.Date(download.updatedAt))
+        )
+
+        return details.entries.joinToString(separator = "\n\n") { (label, value) ->
+            "$label\n$value"
+        }
+    }
+
+    private fun formatLabelForDetails(download: DownloadEntity): String {
+        val label = YtDlpQualityOptions.labelForDownload(download)
+        return if (label.isBlank()) "HTTP" else label
+    }
+
+    private fun downloadStatusLabel(status: DownloadStatus): String {
+        return when (status) {
+            DownloadStatus.QUEUED -> getString(R.string.status_queued)
+            DownloadStatus.PREPARING -> getString(R.string.status_preparing)
+            DownloadStatus.RUNNING -> getString(R.string.status_running)
+            DownloadStatus.PAUSED -> getString(R.string.status_paused)
+            DownloadStatus.FAILED -> getString(R.string.status_failed)
+            DownloadStatus.COMPLETED -> getString(R.string.status_completed)
+            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
+        }
+    }
+
+    private fun buildDownloadSizeText(download: DownloadEntity): String {
+        val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
+        val total = FileSizeFormatter.formatBytes(download.totalBytes)
+        return "$downloaded / $total"
+    }
+
+    private fun progressLabelForDetails(download: DownloadEntity): String {
+        return if (download.totalBytes > 0L) {
+            "${download.progress.coerceIn(0, 100)}%"
+        } else {
+            getString(R.string.download_progress_unknown)
+        }
+    }
+
+    private fun formatSpeedForDetails(speed: Long): String {
+        return if (speed > 0L) {
+            FileSizeFormatter.formatSpeed(speed)
+        } else {
+            "N/D"
+        }
+    }
+
+    private fun copyDownloadUrl(download: DownloadEntity) {
+        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(getString(R.string.details_copy_url), download.sourceUrl)
+        )
+        showToast(getString(R.string.url_copied))
+    }
+
+    private fun clearFinishedDownloads() {
+        scope.launch {
+            val removedCount = withContext(Dispatchers.IO) {
+                app.container.repository.removeFinalizedDownloads().size
+            }
+            if (removedCount == 0) {
+                showToast(getString(R.string.clear_finished_downloads_empty))
+            }
+        }
+    }
+
     private fun showBrowser() {
         homeContainer.visibility = View.GONE
         browserContainer.visibility = View.VISIBLE
@@ -244,9 +390,62 @@ class MainActivity : Activity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        val openDownloadId = intent?.getLongExtra(EXTRA_OPEN_DOWNLOAD_ID, -1L) ?: -1L
+        if (openDownloadId > 0L) {
+            handleOpenDownloadIntent(openDownloadId)
+            return
+        }
+
         if (intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true) {
             showDownloads()
+            return
         }
+
+        if (intent?.action == Intent.ACTION_SEND &&
+            intent.type?.equals("text/plain", ignoreCase = true) == true
+        ) {
+            handleSharedText(intent)
+        }
+    }
+
+    private fun handleSharedText(intent: Intent) {
+        val sharedUrl = extractSharedUrl(
+            intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
+        )
+        if (sharedUrl == null) {
+            showHome()
+            showToast(getString(R.string.invalid_url))
+            return
+        }
+
+        showHome()
+        homeController.setUrl(sharedUrl)
+        showToast(getString(R.string.shared_link_received))
+    }
+
+    private fun handleOpenDownloadIntent(downloadId: Long) {
+        scope.launch {
+            val download = withContext(Dispatchers.IO) {
+                app.container.repository.getById(downloadId)
+            }
+            if (download == null) {
+                showToast(getString(R.string.download_file_not_found))
+                return@launch
+            }
+            openCompletedDownload(download)
+        }
+    }
+
+    private fun extractSharedUrl(sharedText: String): String? {
+        val trimmedText = sharedText.trim()
+        if (UrlValidator.isValidHttpUrl(trimmedText)) {
+            return trimmedText
+        }
+
+        return SHARED_URL_PATTERN.find(trimmedText)
+            ?.value
+            ?.trimEnd('.', ',', ';', ':', ')', ']', '}', '>')
+            ?.takeIf { UrlValidator.isValidHttpUrl(it) }
     }
 
     private fun openYtDlpQualityPicker(
@@ -854,12 +1053,14 @@ class MainActivity : Activity() {
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
+        const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
         private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
         private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
         private const val DEFAULT_MEDIA_DISPLAY_NAME = "M\u00eddia detectada"
         private const val MAX_MEDIA_DISPLAY_NAME_LENGTH = 56
         private const val ELLIPSIS = "..."
+        private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
         private val VIDEO_EXTENSIONS = setOf("mp4", "webm", "m3u8")
         private val AUDIO_EXTENSIONS = setOf("mp3", "m4a")
         private val FILE_EXTENSIONS = setOf("pdf", "zip", "jpg", "jpeg", "png")

@@ -357,32 +357,51 @@
             </FrameLayout>
         </LinearLayout>
 
-        <FrameLayout
+        <LinearLayout
             android:id="@+id/downloadsContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:orientation="vertical"
             android:visibility="gone">
 
-            <ListView
-                android:id="@+id/downloadsList"
+            <Button
+                android:id="@+id/clearFinishedButton"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:cacheColorHint="@android:color/transparent"
-                android:clipToPadding="false"
-                android:divider="@android:color/transparent"
-                android:dividerHeight="10dp"
-                android:paddingBottom="8dp" />
+                android:layout_height="42dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minHeight="0dp"
+                android:text="@string/clear_finished_downloads"
+                android:textAllCaps="false"
+                android:textColor="@color/button_secondary_text"
+                android:textSize="13sp" />
 
-            <TextView
-                android:id="@+id/emptyDownloadsText"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:gravity="center"
-                android:text="@string/empty_downloads"
-                android:textColor="@color/text_secondary"
-                android:textSize="16sp" />
-        </FrameLayout>
+                android:layout_height="0dp"
+                android:layout_marginTop="10dp"
+                android:layout_weight="1">
+
+                <ListView
+                    android:id="@+id/downloadsList"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:cacheColorHint="@android:color/transparent"
+                    android:clipToPadding="false"
+                    android:divider="@android:color/transparent"
+                    android:dividerHeight="10dp"
+                    android:paddingBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/emptyDownloadsText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:text="@string/empty_downloads"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="16sp" />
+            </FrameLayout>
+        </LinearLayout>
 
         <ScrollView
             android:id="@+id/settingsContainer"

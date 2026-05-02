@@ -8,6 +8,16 @@
     <string name="settings_tab">Config.</string>
     <string name="settings_title">Configurações</string>
     <string name="url_hint">Cole uma URL</string>
+    <string name="shared_link_received">Link recebido. Escolha como deseja baixar.</string>
+    <string name="download_interrupted_resume">Download interrompido. Toque em Retomar.</string>
+    <string name="download_interrupted_retry">Download interrompido. Toque em Tentar novamente.</string>
+    <string name="clear_finished_downloads">Limpar finalizados</string>
+    <string name="clear_finished_downloads_title">Limpar downloads</string>
+    <string name="clear_finished_downloads_message">Remover downloads finalizados da lista? Arquivos j&#225; baixados n&#227;o ser&#227;o apagados.</string>
+    <string name="clear_finished_downloads_empty">Nenhum download finalizado para limpar.</string>
+    <string name="details_copy_url">Copiar URL</string>
+    <string name="details_close">Fechar</string>
+    <string name="url_copied">URL copiada.</string>
     <string name="home_download_help">Cole uma URL direta ou link de video para baixar em MP4 ou MP3.</string>
     <string name="home_card_mp4_title">MP4</string>
     <string name="home_card_mp4_body">V&#237;deo</string>
