@@ -36,6 +36,7 @@ import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.UrlValidator
 import com.androiddownload.core.utils.YtDlpQualityOptions
+import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsAdapter
 import com.androiddownload.ui.home.HomeController
@@ -94,6 +95,7 @@ class MainActivity : Activity() {
     private lateinit var ytdlpUpdateStatusText: TextView
     private lateinit var updateYtDlpButton: Button
     private lateinit var autoUpdateYtDlpButton: Button
+    private lateinit var diagnosticsButton: Button
     private lateinit var aboutAppButton: Button
     private lateinit var settingsCloseButton: Button
     private lateinit var homeController: HomeController
@@ -172,6 +174,7 @@ class MainActivity : Activity() {
         ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
         updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
         autoUpdateYtDlpButton = findViewById(R.id.autoUpdateYtDlpButton)
+        diagnosticsButton = findViewById(R.id.diagnosticsButton)
         aboutAppButton = findViewById(R.id.aboutAppButton)
         settingsCloseButton = findViewById(R.id.settingsCloseButton)
         homeTabButton = findViewById(R.id.homeTabButton)
@@ -251,6 +254,7 @@ class MainActivity : Activity() {
         }
         updateYtDlpButton.setOnClickListener { updateYtDlpManually() }
         autoUpdateYtDlpButton.setOnClickListener { toggleAutoUpdateYtDlp() }
+        diagnosticsButton.setOnClickListener { showDiagnosticsDialog() }
         aboutAppButton.setOnClickListener { showAboutDialog() }
         downloadsSearchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -944,6 +948,47 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun showDiagnosticsDialog() {
+        val diagnostics = YtDlpDiagnostics.formatted(this)
+        val textView = TextView(this).apply {
+            text = diagnostics
+            setTextIsSelectable(true)
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 13f
+            setLineSpacing(dp(2).toFloat(), 1f)
+        }
+        showDarkContentDialog(
+            title = getString(R.string.diagnostics_title),
+            contentView = ScrollView(this).apply {
+                addView(
+                    textView,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            },
+            buttons = listOf(
+                DarkDialogButton(getString(R.string.details_close)),
+                DarkDialogButton(getString(R.string.diagnostics_copy), primary = true) {
+                    copyDiagnostics()
+                },
+                DarkDialogButton(getString(R.string.diagnostics_clear)) {
+                    YtDlpDiagnostics.clear(this)
+                    showToast(getString(R.string.diagnostics_cleared))
+                }
+            )
+        )
+    }
+
+    private fun copyDiagnostics() {
+        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(getString(R.string.diagnostics_title), YtDlpDiagnostics.formatted(this))
+        )
+        showToast(getString(R.string.diagnostics_copied))
+    }
+
     private fun getPreferredDownloadDirectory(): File {
         return getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(filesDir, "downloads")
@@ -1129,7 +1174,8 @@ class MainActivity : Activity() {
             )
             addView(
                 LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
+                    val stackButtons = buttons.size > 2
+                    orientation = if (stackButtons) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.END
                     buttons.forEachIndexed { index, buttonSpec ->
                         addView(
@@ -1146,12 +1192,21 @@ class MainActivity : Activity() {
                                     buttonSpec.onClick?.invoke()
                                 }
                             },
-                            LinearLayout.LayoutParams(
-                                0,
-                                dp(42),
-                                1f
-                            ).apply {
-                                if (index > 0) leftMargin = dp(8)
+                            if (stackButtons) {
+                                LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    dp(42)
+                                ).apply {
+                                    if (index > 0) topMargin = dp(8)
+                                }
+                            } else {
+                                LinearLayout.LayoutParams(
+                                    0,
+                                    dp(42),
+                                    1f
+                                ).apply {
+                                    if (index > 0) leftMargin = dp(8)
+                                }
                             }
                         )
                     }

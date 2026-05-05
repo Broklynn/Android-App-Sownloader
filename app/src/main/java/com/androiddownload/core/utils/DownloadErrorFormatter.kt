@@ -22,6 +22,8 @@ object DownloadErrorFormatter {
             }
             "http error 403" in normalized ||
                 "http 403" in normalized ||
+                "unable to download video data" in normalized ||
+                "requested format is not available" in normalized ||
                 "sabr" in normalized ||
                 "some web client https formats have been skipped" in normalized ||
                 "no title found in player responses" in normalized -> {
@@ -51,5 +53,23 @@ object DownloadErrorFormatter {
             ErrorKind.UNABLE_TO_DOWNLOAD,
             ErrorKind.GENERIC -> false
         }
+    }
+
+    fun isYtDlpFallbackRecoverable(errorMessage: String?): Boolean {
+        return when (classify(errorMessage)) {
+            ErrorKind.YOUTUBE_VERIFICATION,
+            ErrorKind.YOUTUBE_TEMPORARY_BLOCK -> true
+            ErrorKind.YOUTUBE_UNAVAILABLE,
+            ErrorKind.UNABLE_TO_DOWNLOAD,
+            ErrorKind.GENERIC -> false
+        }
+    }
+
+    fun isYoutubeAutoUpdateRecoverable(errorMessage: String?): Boolean {
+        val normalized = errorMessage.orEmpty().lowercase(Locale.US)
+        return classify(normalized) == ErrorKind.YOUTUBE_VERIFICATION ||
+            "http error 403" in normalized ||
+            "http 403" in normalized ||
+            "sabr" in normalized
     }
 }

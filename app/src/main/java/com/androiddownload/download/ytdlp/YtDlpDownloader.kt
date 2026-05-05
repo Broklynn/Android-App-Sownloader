@@ -9,11 +9,13 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
+import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import com.yausername.youtubedl_android.mapper.VideoInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -22,7 +24,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.Locale
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 class YtDlpDownloader(
@@ -84,7 +92,8 @@ class YtDlpDownloader(
             downloadId = downloadId,
             formatSelector = formatSelector,
             onProgress = onProgress,
-            allowAutoUpdateRetry = true
+            allowAutoUpdateRetry = true,
+            autoUpdateApplied = false
         )
     }
 
@@ -92,7 +101,8 @@ class YtDlpDownloader(
         downloadId: Long,
         formatSelector: String = "best",
         onProgress: suspend () -> Unit = {},
-        allowAutoUpdateRetry: Boolean
+        allowAutoUpdateRetry: Boolean,
+        autoUpdateApplied: Boolean
     ) {
         withContext(Dispatchers.IO) {
             initialize()
@@ -106,6 +116,13 @@ class YtDlpDownloader(
             }
 
             val current = repository.getById(downloadId) ?: return@withContext
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = formatSelector,
+                attempt = "download recebido",
+                result = "inicio"
+            )
             if (current.status == DownloadStatus.CANCELED ||
                 current.status == DownloadStatus.COMPLETED
             ) {
@@ -113,23 +130,69 @@ class YtDlpDownloader(
             }
 
             repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = formatSelector,
+                attempt = "preparing",
+                result = "status PREPARING"
+            )
             progressStates[downloadId] = ProgressSnapshot(lastUpdatedAt = System.currentTimeMillis())
+            val preparingStartedAt = System.currentTimeMillis()
 
             val processId = downloadId.toString()
             activeProcessIds[downloadId] = processId
-            val metadata = runCatching {
-                YoutubeDL.getInstance().getInfo(current.sourceUrl)
-            }.getOrNull()
+            val metadata = loadMetadataWithTimeout(downloadId, current, formatSelector)
             val metadataTitle = FileNameUtils.sanitizeBaseName(
                 metadata?.title?.takeIf { it.isNotBlank() } ?: current.fileName
             )
+            if (!metadata?.title.isNullOrBlank()) {
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = formatSelector,
+                    attempt = "getInfo",
+                    result = "titulo getInfo",
+                    error = metadata?.title
+                )
+            }
             val selector = current.qualitySelector.orEmpty()
             val metadataExt = normalizeExtension(metadata?.ext)
             val attempts = buildAttempts(current.sourceUrl, selector)
             var lastException: Exception? = null
+            var lastAttemptName = attempts.firstOrNull()?.name.orEmpty()
+            var failedAttemptCount = 0
 
             try {
                 for ((index, attempt) in attempts.withIndex()) {
+                    if (System.currentTimeMillis() - preparingStartedAt > PREPARE_BEFORE_EXECUTE_TIMEOUT_MS) {
+                        val timeout = IOException(context.getString(R.string.download_prepare_timeout))
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = selector.ifBlank { formatSelector },
+                            attempt = "preparing",
+                            result = "timeout preparing",
+                            error = "PREPARING excedeu ${PREPARE_BEFORE_EXECUTE_TIMEOUT_MS / 1000}s antes do execute"
+                        )
+                        handleFailure(
+                            downloadId = downloadId,
+                            current = current,
+                            exception = timeout,
+                            attemptsApplied = failedAttemptCount > 0 || autoUpdateApplied,
+                            lastAttemptName = "preparing",
+                            autoUpdateApplied = autoUpdateApplied
+                        )
+                        return@withContext
+                    }
+                    lastAttemptName = attempt.name
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = selector.ifBlank { formatSelector },
+                        attempt = attempt.name,
+                        result = "iniciando tentativa"
+                    )
                     val tempDir = createTempDir(downloadId)
                     try {
                         executeAttempt(
@@ -142,15 +205,42 @@ class YtDlpDownloader(
                             attempt = attempt,
                             onProgress = onProgress
                         )
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = selector.ifBlank { formatSelector },
+                            attempt = attempt.name,
+                            result = "sucesso",
+                            autoUpdate = autoUpdateApplied
+                        )
                         return@withContext
                     } catch (exception: Exception) {
                         lastException = exception
+                        failedAttemptCount++
                         if (isCanceled(downloadId)) {
                             tempDir.deleteRecursively()
+                            YtDlpDiagnostics.record(
+                                context = context,
+                                url = current.sourceUrl,
+                                option = selector.ifBlank { formatSelector },
+                                attempt = attempt.name,
+                                result = "cancelado",
+                                error = exception.message,
+                                autoUpdate = autoUpdateApplied
+                            )
                             return@withContext
                         }
                         tempDir.deleteRecursively()
-                        if (!shouldRetryAudioAttempt(selector, exception, index, attempts.lastIndex)) {
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = selector.ifBlank { formatSelector },
+                            attempt = attempt.name,
+                            result = "falha tentativa",
+                            error = exception.message,
+                            autoUpdate = autoUpdateApplied
+                        )
+                        if (!shouldRetryYtDlpAttempt(exception, index, attempts.lastIndex)) {
                             break
                         }
                     }
@@ -161,17 +251,34 @@ class YtDlpDownloader(
                     val failure = lastException ?: IOException(context.getString(R.string.download_audio_error))
                     if (allowAutoUpdateRetry && shouldAutoUpdateAndRetry(current, failure)) {
                         val updated = runAutoUpdateIfAllowed()
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = selector.ifBlank { formatSelector },
+                            attempt = lastAttemptName.ifBlank { "auto-update" },
+                            result = if (updated) "auto-update sucesso" else "auto-update ignorado/falhou",
+                            error = failure.message,
+                            autoUpdate = true
+                        )
                         if (updated && !isCanceled(downloadId)) {
                             download(
                                 downloadId = downloadId,
                                 formatSelector = formatSelector,
                                 onProgress = onProgress,
-                                allowAutoUpdateRetry = false
+                                allowAutoUpdateRetry = false,
+                                autoUpdateApplied = true
                             )
                             return@withContext
                         }
                     }
-                    handleFailure(downloadId, current, failure)
+                    handleFailure(
+                        downloadId = downloadId,
+                        current = current,
+                        exception = failure,
+                        attemptsApplied = failedAttemptCount > 1 || autoUpdateApplied,
+                        lastAttemptName = lastAttemptName,
+                        autoUpdateApplied = autoUpdateApplied
+                    )
                 }
             } finally {
                 activeProcessIds.remove(downloadId)
@@ -199,7 +306,7 @@ class YtDlpDownloader(
         attempt: YtDlpAttempt,
         onProgress: suspend () -> Unit
     ) {
-        val outputTemplate = File(tempDir, "$metadataTitle.%(ext)s").absolutePath
+        val outputTemplate = File(tempDir, "%(title).200B.%(ext)s").absolutePath
         val expectedMimeType = when {
             attempt.convertToMp3 -> "audio/mpeg"
             attempt.mergeOutputFormat == "mp4" -> "video/mp4"
@@ -245,11 +352,53 @@ class YtDlpDownloader(
             )
         )
         onProgress()
+        YtDlpDiagnostics.record(
+            context = context,
+            url = current.sourceUrl,
+            option = current.qualitySelector.orEmpty(),
+            attempt = attempt.name,
+            result = "chamando execute"
+        )
 
-        YoutubeDL.getInstance().execute(
+        executeWithWatchdog(
+            downloadId = downloadId,
             request = request,
-            processId = processId
-        ) { progress: Float, etaSeconds: Long, line: String ->
+            processId = processId,
+            current = current,
+            tempDir = tempDir,
+            attempt = attempt,
+            onProgress = onProgress
+        )
+
+        currentCoroutineContext().ensureActive()
+        finalizeDownload(
+            downloadId = downloadId,
+            current = current,
+            tempDir = tempDir,
+            expectedMimeType = expectedMimeType,
+            metadataTitle = metadataTitle
+        )
+    }
+
+    private suspend fun executeWithWatchdog(
+        downloadId: Long,
+        request: YoutubeDLRequest,
+        processId: String,
+        current: DownloadEntity,
+        tempDir: File,
+        attempt: YtDlpAttempt,
+        onProgress: suspend () -> Unit
+    ) {
+        val lastCallbackAt = AtomicLong(System.currentTimeMillis())
+        val callbackSeen = AtomicBoolean(false)
+        val executor = Executors.newSingleThreadExecutor()
+        val future = executor.submit(Callable {
+            YoutubeDL.getInstance().execute(
+                request = request,
+                processId = processId
+            ) { progress: Float, etaSeconds: Long, line: String ->
+                lastCallbackAt.set(System.currentTimeMillis())
+                callbackSeen.set(true)
             runBlocking {
                 val latest = repository.getById(downloadId) ?: return@runBlocking
                 val previousState = progressStates[downloadId]
@@ -291,10 +440,47 @@ class YtDlpDownloader(
                     onProgress()
                 }
             }
+            }
+        })
+        try {
+            while (true) {
+                try {
+                    future.get(EXECUTE_WATCHDOG_POLL_MS, TimeUnit.MILLISECONDS)
+                    if (callbackSeen.get()) {
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = current.qualitySelector.orEmpty(),
+                            attempt = attempt.name,
+                            result = "execute concluiu"
+                        )
+                    }
+                    return
+                } catch (_: TimeoutException) {
+                    currentCoroutineContext().ensureActive()
+                    if (isCanceled(downloadId)) {
+                        future.cancel(true)
+                        throw IOException(context.getString(R.string.status_canceled))
+                    }
+                    val silenceMs = System.currentTimeMillis() - lastCallbackAt.get()
+                    if (silenceMs >= EXECUTE_NO_CALLBACK_TIMEOUT_MS) {
+                        YoutubeDL.getInstance().destroyProcessById(processId)
+                        future.cancel(true)
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = current.qualitySelector.orEmpty(),
+                            attempt = attempt.name,
+                            result = "timeout execute",
+                            error = "Sem callback/progresso por ${silenceMs / 1000}s"
+                        )
+                        throw IOException(context.getString(R.string.download_prepare_timeout))
+                    }
+                }
+            }
+        } finally {
+            executor.shutdownNow()
         }
-
-        currentCoroutineContext().ensureActive()
-        finalizeDownload(downloadId, current, tempDir)
     }
 
     fun getProgressSnapshot(downloadId: Long): ProgressSnapshot? {
@@ -382,13 +568,20 @@ class YtDlpDownloader(
     private suspend fun finalizeDownload(
         downloadId: Long,
         current: DownloadEntity,
-        tempDir: File
+        tempDir: File,
+        expectedMimeType: String?,
+        metadataTitle: String
     ) {
         val outputFile = findFinalOutputFile(tempDir)
             ?: throw IOException(context.getString(R.string.download_ytdlp_error))
 
         val latest = repository.getById(downloadId) ?: current
-        val finalFile = resolveFinalFile(outputFile.name)
+        val finalName = resolveFinalName(
+            actualName = outputFile.name,
+            expectedMimeType = expectedMimeType,
+            metadataTitle = metadataTitle
+        )
+        val finalFile = resolveFinalFile(finalName, expectedMimeType)
         if (!outputFile.renameTo(finalFile)) {
             outputFile.copyTo(finalFile, overwrite = true)
             outputFile.delete()
@@ -412,14 +605,25 @@ class YtDlpDownloader(
                 errorMessage = null
             )
         )
+        YtDlpDiagnostics.record(
+            context = context,
+            url = current.sourceUrl,
+            option = current.qualitySelector.orEmpty(),
+            attempt = "nome final",
+            result = "arquivo finalizado",
+            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${finalFile.name}"
+        )
     }
 
     private suspend fun handleFailure(
         downloadId: Long,
         current: DownloadEntity,
-        exception: Exception
+        exception: Exception,
+        attemptsApplied: Boolean,
+        lastAttemptName: String,
+        autoUpdateApplied: Boolean
     ) {
-        val message = buildErrorMessage(current, exception)
+        val message = buildErrorMessage(current, exception, attemptsApplied)
         progressStates.remove(downloadId)
         repository.update(
             current.copy(
@@ -429,28 +633,46 @@ class YtDlpDownloader(
             )
         )
         repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+        YtDlpDiagnostics.record(
+            context = context,
+            url = current.sourceUrl,
+            option = current.qualitySelector.orEmpty(),
+            attempt = lastAttemptName,
+            result = "falha final",
+            error = exception.message,
+            autoUpdate = autoUpdateApplied
+        )
     }
 
-    private fun buildErrorMessage(current: DownloadEntity, exception: Exception): String {
+    private fun buildErrorMessage(
+        current: DownloadEntity,
+        exception: Exception,
+        attemptsApplied: Boolean
+    ): String {
         val detail = exception.message?.trim().orEmpty()
+        val attemptsMessage = if (attemptsApplied) {
+            "\n\n${context.getString(R.string.download_error_fallback_applied)}"
+        } else {
+            ""
+        }
         if (isMp3Request(current.qualitySelector.orEmpty()) && detail.contains("ffmpeg", ignoreCase = true)) {
-            return context.getString(R.string.download_mp3_error)
+            return context.getString(R.string.download_mp3_error) + attemptsMessage
         }
         if (DownloadErrorFormatter.classify(detail) != DownloadErrorFormatter.ErrorKind.GENERIC) {
             val friendly = DownloadErrorFormatter.friendlyMessage(context, detail)
             return if (detail.isBlank()) {
-                friendly
+                friendly + attemptsMessage
             } else {
-                "$friendly\n\n${context.getString(R.string.download_error_technical_details)}\n$detail"
+                "$friendly$attemptsMessage\n\n${context.getString(R.string.download_error_technical_details)}\n$detail"
             }
         }
         if (isAudioRequest(current.qualitySelector.orEmpty())) {
-            return context.getString(R.string.download_audio_error)
+            return context.getString(R.string.download_audio_error) + attemptsMessage
         }
         return if (detail.isBlank()) {
-            context.getString(R.string.download_ytdlp_error)
+            context.getString(R.string.download_ytdlp_error) + attemptsMessage
         } else {
-            "${context.getString(R.string.download_ytdlp_error)}: $detail"
+            "${context.getString(R.string.download_ytdlp_error)}$attemptsMessage: $detail"
         }
     }
 
@@ -460,18 +682,75 @@ class YtDlpDownloader(
         return directory
     }
 
+    private fun loadMetadataWithTimeout(
+        downloadId: Long,
+        current: DownloadEntity,
+        option: String
+    ): VideoInfo? {
+        YtDlpDiagnostics.record(
+            context = context,
+            url = current.sourceUrl,
+            option = option,
+            attempt = "getInfo",
+            result = "inicio getInfo"
+        )
+        val executor = Executors.newSingleThreadExecutor()
+        val future = executor.submit(Callable {
+            YoutubeDL.getInstance().getInfo(current.sourceUrl)
+        })
+        return try {
+            val info = future.get(GET_INFO_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = option,
+                attempt = "getInfo",
+                result = "fim getInfo"
+            )
+            info
+        } catch (exception: TimeoutException) {
+            future.cancel(true)
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = option,
+                attempt = "getInfo",
+                result = "timeout getInfo",
+                error = "getInfo excedeu ${GET_INFO_TIMEOUT_MS / 1000}s"
+            )
+            null
+        } catch (exception: Exception) {
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = option,
+                attempt = "getInfo",
+                result = "falha getInfo",
+                error = exception.message
+            )
+            null
+        } finally {
+            executor.shutdownNow()
+            if (runBlocking { isCanceled(downloadId) }) {
+                future.cancel(true)
+            }
+        }
+    }
+
     private fun buildAttempts(sourceUrl: String, selector: String): List<YtDlpAttempt> {
         val normalized = selector.ifBlank { "best" }
         val mp3AudioQuality = mp3AudioQualityForSelector(normalized)
         return when {
             mp3AudioQuality != null -> listOf(
                 YtDlpAttempt(
+                    name = "mp3 preferido",
                     formatSelector = "ba[ext=m4a]/ba[ext=webm]/bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = false),
                     convertToMp3 = true,
                     audioQuality = mp3AudioQuality
                 ),
                 YtDlpAttempt(
+                    name = "mp3 fallback bestaudio",
                     formatSelector = "bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = true),
                     convertToMp3 = true,
@@ -480,16 +759,39 @@ class YtDlpDownloader(
             )
             normalized == "bestaudio" -> listOf(
                 YtDlpAttempt(
+                    name = "audio preferido",
                     formatSelector = "ba[ext=m4a]/ba[ext=webm]/bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = false)
                 ),
                 YtDlpAttempt(
+                    name = "audio fallback bestaudio",
                     formatSelector = "bestaudio/best",
                     extractorArgs = youtubeExtractorArgs(sourceUrl, fallback = true)
                 )
             )
+            mp4HeightForSelector(normalized) != null -> {
+                val height = mp4HeightForSelector(normalized) ?: 720
+                listOf(
+                    YtDlpAttempt(
+                        name = "mp4 selecionado ${height}p",
+                        formatSelector = normalized,
+                        mergeOutputFormat = "mp4"
+                    ),
+                    YtDlpAttempt(
+                        name = "mp4 fallback permissivo ${height}p",
+                        formatSelector = "bv*[height<=$height]+ba/b[height<=$height]/best[height<=$height]",
+                        mergeOutputFormat = "mp4"
+                    ),
+                    YtDlpAttempt(
+                        name = "mp4 fallback best",
+                        formatSelector = "best[ext=mp4]/best",
+                        mergeOutputFormat = "mp4"
+                    )
+                )
+            }
             else -> listOf(
                 YtDlpAttempt(
+                    name = "formato selecionado",
                     formatSelector = normalized,
                     mergeOutputFormat = if (shouldMergeToMp4(normalized)) "mp4" else null
                 )
@@ -506,18 +808,13 @@ class YtDlpDownloader(
         }
     }
 
-    private fun shouldRetryAudioAttempt(
-        selector: String,
+    private fun shouldRetryYtDlpAttempt(
         exception: Exception,
         attemptIndex: Int,
         lastIndex: Int
     ): Boolean {
-        if (!isAudioRequest(selector)) return false
         if (attemptIndex >= lastIndex) return false
-        val message = exception.message.orEmpty()
-        return message.contains("403", ignoreCase = true) ||
-            message.contains("unable to download video data", ignoreCase = true) ||
-            message.contains("Forbidden", ignoreCase = true)
+        return DownloadErrorFormatter.isYtDlpFallbackRecoverable(exception.message)
     }
 
     private fun isAudioRequest(selector: String): Boolean {
@@ -546,10 +843,20 @@ class YtDlpDownloader(
             selector == YtDlpQualityOptions.SELECTOR_MP4_480P
     }
 
+    private fun mp4HeightForSelector(selector: String): Int? {
+        return when (selector) {
+            YtDlpQualityOptions.SELECTOR_MP4_1440P -> 1440
+            YtDlpQualityOptions.SELECTOR_MP4_1080P -> 1080
+            YtDlpQualityOptions.SELECTOR_MP4_720P -> 720
+            YtDlpQualityOptions.SELECTOR_MP4_480P -> 480
+            else -> null
+        }
+    }
+
     private fun shouldAutoUpdateAndRetry(current: DownloadEntity, exception: Exception): Boolean {
         if (!isYoutubeUrl(current.sourceUrl)) return false
         if (!isAutoUpdateEnabled()) return false
-        return DownloadErrorFormatter.isYoutubeRecoverable(exception.message)
+        return DownloadErrorFormatter.isYoutubeAutoUpdateRecoverable(exception.message)
     }
 
     private fun isAutoUpdateEnabled(): Boolean {
@@ -573,12 +880,24 @@ class YtDlpDownloader(
     }
 
     private fun runYtDlpUpdate(): Boolean {
-        return runCatching {
+        val executor = Executors.newSingleThreadExecutor()
+        val future = executor.submit(Callable {
             YoutubeDL.getInstance().updateYoutubeDL(
                 context.applicationContext,
                 YoutubeDL.UpdateChannel.NIGHTLY
             )
-        }.isSuccess
+            true
+        })
+        return try {
+            future.get(UPDATE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (exception: TimeoutException) {
+            future.cancel(true)
+            false
+        } catch (_: Exception) {
+            false
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun isYoutubeUrl(url: String): Boolean {
@@ -603,12 +922,59 @@ class YtDlpDownloader(
             ?.maxByOrNull { it.lastModified() }
     }
 
-    private fun resolveFinalFile(preferredName: String): File {
+    private fun resolveFinalName(
+        actualName: String,
+        expectedMimeType: String?,
+        metadataTitle: String
+    ): String {
+        val actual = FileNameUtils.ensureExtension(
+            FileNameUtils.sanitize(actualName),
+            expectedMimeType
+        )
+        if (isUsableFinalName(actual, expectedMimeType)) {
+            return actual
+        }
+
+        val metadataName = FileNameUtils.ensureExtension(
+            FileNameUtils.sanitizeBaseName(metadataTitle),
+            expectedMimeType
+        )
+        if (isUsableFinalName(metadataName, expectedMimeType)) {
+            return metadataName
+        }
+
+        val fallbackBase = if (expectedMimeType == "audio/mpeg") {
+            "audio_${System.currentTimeMillis()}"
+        } else {
+            "video_${System.currentTimeMillis()}"
+        }
+        return FileNameUtils.ensureExtension(fallbackBase, expectedMimeType)
+    }
+
+    private fun isUsableFinalName(fileName: String, expectedMimeType: String?): Boolean {
+        val clean = fileName.trim()
+        if (clean.isBlank()) return false
+        if ("%(" in clean || clean == ")") return false
+        val extension = clean.substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase(Locale.US)
+        if (extension.isBlank() || extension == "bin") return false
+        if (expectedMimeType == "video/mp4" && extension != "mp4") return false
+        if (expectedMimeType == "audio/mpeg" && extension != "mp3") return false
+
+        val base = clean.substringBeforeLast('.', clean)
+            .trim()
+            .lowercase(Locale.US)
+            .replace(Regex("[_\\-\\s]+"), "")
+        if (base.isBlank()) return false
+        return base !in GENERIC_OUTPUT_NAMES
+    }
+
+    private fun resolveFinalFile(preferredName: String, expectedMimeType: String?): File {
         val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "downloads")
         directory.mkdirs()
 
-        val candidateName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName))
+        val candidateName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName), expectedMimeType)
         var candidate = File(directory, candidateName)
         var index = 1
         val name = candidateName.substringBeforeLast('.', candidateName)
@@ -658,6 +1024,7 @@ class YtDlpDownloader(
     }
 
     private data class YtDlpAttempt(
+        val name: String,
         val formatSelector: String,
         val extractorArgs: String? = null,
         val convertToMp3: Boolean = false,
@@ -669,5 +1036,21 @@ class YtDlpDownloader(
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
         private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
         private const val AUTO_UPDATE_COOLDOWN_MS = 30L * 60L * 1000L
+        private const val GET_INFO_TIMEOUT_MS = 30L * 1000L
+        private const val UPDATE_TIMEOUT_MS = 60L * 1000L
+        private const val PREPARE_BEFORE_EXECUTE_TIMEOUT_MS = 60L * 1000L
+        private const val EXECUTE_WATCHDOG_POLL_MS = 5L * 1000L
+        private const val EXECUTE_NO_CALLBACK_TIMEOUT_MS = 120L * 1000L
+        private val GENERIC_OUTPUT_NAMES = setOf(
+            "download",
+            "file",
+            "video",
+            "audio",
+            "watch",
+            "videoplayback",
+            "youtube",
+            "index",
+            "untitled"
+        )
     }
 }

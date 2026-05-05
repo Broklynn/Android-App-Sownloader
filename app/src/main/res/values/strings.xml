@@ -69,6 +69,14 @@
     <string name="about_title">Sobre</string>
     <string name="about_summary">Informações básicas do app e aviso de uso responsável.</string>
     <string name="about_app_button">Sobre o app</string>
+    <string name="diagnostics_title">Diagnóstico</string>
+    <string name="diagnostics_summary">Últimos eventos técnicos do yt-dlp.</string>
+    <string name="diagnostics_button">Abrir diagnóstico</string>
+    <string name="diagnostics_empty">Nenhum diagnóstico registrado.</string>
+    <string name="diagnostics_copy">Copiar diagnóstico</string>
+    <string name="diagnostics_clear">Limpar diagnóstico</string>
+    <string name="diagnostics_copied">Diagnóstico copiado.</string>
+    <string name="diagnostics_cleared">Diagnóstico limpo.</string>
     <string name="about_app_name">DarkWave</string>
     <string name="about_app_description">Baixe vídeos em MP4 ou músicas em MP3.</string>
     <string name="about_app_responsible_use">Use apenas com conteúdos que você tem direito de baixar.</string>
@@ -133,8 +141,10 @@
     <string name="download_error_video_unavailable">Vídeo indisponível.</string>
     <string name="download_error_unable_to_download">Não foi possível baixar este conteúdo.</string>
     <string name="download_error_generic_short">Falha no download. Toque para ver detalhes.</string>
+    <string name="download_prepare_timeout">O download demorou demais para preparar. Tente novamente.</string>
     <string name="download_title_failed">Download não concluído</string>
     <string name="download_title_unknown">Conteúdo não identificado</string>
+    <string name="download_error_fallback_applied">Tentativas automáticas aplicadas antes da falha.</string>
     <string name="download_error_technical_details">Detalhes técnicos:</string>
     <string name="ytdlp_quality_mp4_1440p">MP4 - 1440p</string>
     <string name="ytdlp_quality_mp4_1080p">MP4 - 1080p</string>
