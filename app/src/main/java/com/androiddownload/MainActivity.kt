@@ -84,6 +84,7 @@ class MainActivity : Activity() {
     private lateinit var downloadsFilterCompletedButton: Button
     private lateinit var downloadsFilterFailedButton: Button
     private lateinit var activeDownloadCard: View
+    private lateinit var activeDownloadTitleText: TextView
     private lateinit var activeDownloadNameText: TextView
     private lateinit var activeDownloadFormatText: TextView
     private lateinit var activeDownloadProgressText: TextView
@@ -163,6 +164,7 @@ class MainActivity : Activity() {
         downloadsFilterCompletedButton = findViewById(R.id.downloadsFilterCompletedButton)
         downloadsFilterFailedButton = findViewById(R.id.downloadsFilterFailedButton)
         activeDownloadCard = findViewById(R.id.activeDownloadCard)
+        activeDownloadTitleText = findViewById(R.id.activeDownloadTitleText)
         activeDownloadNameText = findViewById(R.id.activeDownloadNameText)
         activeDownloadFormatText = findViewById(R.id.activeDownloadFormatText)
         activeDownloadProgressText = findViewById(R.id.activeDownloadProgressText)
@@ -543,11 +545,9 @@ class MainActivity : Activity() {
     }
 
     private fun updateActiveDownloadCard() {
-        val activeDownload = currentDownloads.firstOrNull { download ->
-            download.status == DownloadStatus.QUEUED ||
-                download.status == DownloadStatus.PREPARING ||
-                download.status == DownloadStatus.RUNNING
-        }
+        val activeDownload = currentDownloads.firstDownloadByStatus(DownloadStatus.RUNNING)
+            ?: currentDownloads.firstDownloadByStatus(DownloadStatus.PREPARING)
+            ?: currentDownloads.firstDownloadByStatus(DownloadStatus.QUEUED)
         if (activeDownload == null) {
             activeDownloadCard.visibility = View.GONE
             activeDownloadCard.setOnClickListener(null)
@@ -558,6 +558,7 @@ class MainActivity : Activity() {
         val indeterminate = isIndeterminateDownload(activeDownload)
         activeDownloadCard.visibility = View.VISIBLE
         activeDownloadCard.setOnClickListener { showDownloadDetailsDialog(activeDownload) }
+        activeDownloadTitleText.text = activeDownloadCardTitle(activeDownload.status)
         activeDownloadNameText.text = activeDownload.fileName
         activeDownloadFormatText.text =
             "${formatLabelForDetails(activeDownload)} - ${downloadStatusLabel(activeDownload.status)}"
@@ -566,6 +567,18 @@ class MainActivity : Activity() {
         activeDownloadProgressBar.progress = progress
         activeDownloadSpeedText.text = formatSpeedForDetails(activeDownload.speed)
         activeDownloadSizeText.text = summaryDownloadSizeText(activeDownload)
+    }
+
+    private fun List<DownloadEntity>.firstDownloadByStatus(status: DownloadStatus): DownloadEntity? {
+        return firstOrNull { it.status == status }
+    }
+
+    private fun activeDownloadCardTitle(status: DownloadStatus): String {
+        return when (status) {
+            DownloadStatus.QUEUED -> getString(R.string.status_queued)
+            DownloadStatus.PREPARING -> getString(R.string.status_preparing)
+            else -> getString(R.string.downloads_active_title)
+        }
     }
 
     private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
