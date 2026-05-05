@@ -17,9 +17,12 @@ import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.yausername.youtubedl_android.mapper.VideoInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -42,6 +45,7 @@ class YtDlpDownloader(
     private val downloadTotalRegex = Regex("""of\s+~?([\d.]+)\s*([KMGTPE]?i?B)""", RegexOption.IGNORE_CASE)
     private val downloadSpeedRegex = Regex("""at\s+([\d.]+)\s*([KMGTPE]?i?B/s)""", RegexOption.IGNORE_CASE)
     private val progressUpdateIntervalMs = 1000L
+    private val executionMutex = Mutex()
 
     @Volatile
     private var initialized = false
@@ -105,13 +109,87 @@ class YtDlpDownloader(
         formatSelector: String = "best",
         onProgress: suspend () -> Unit = {}
     ) {
-        download(
-            downloadId = downloadId,
-            formatSelector = formatSelector,
-            onProgress = onProgress,
-            allowAutoUpdateRetry = true,
-            autoUpdateApplied = false
+        val queuedAt = System.currentTimeMillis()
+        val queuedDownload = repository.getById(downloadId) ?: return
+        if (queuedDownload.status == DownloadStatus.CANCELED ||
+            queuedDownload.status == DownloadStatus.COMPLETED
+        ) {
+            return
+        }
+
+        repository.updateStatus(downloadId, DownloadStatus.QUEUED)
+        progressStates.remove(downloadId)
+        YtDlpDiagnostics.record(
+            context = context,
+            url = queuedDownload.sourceUrl,
+            option = formatSelector,
+            attempt = "fila yt-dlp",
+            result = "entrou na fila",
+            durationMs = 0L
         )
+        onProgress()
+
+        try {
+            executionMutex.withLock {
+                val current = repository.getById(downloadId) ?: return@withLock
+                if (current.status == DownloadStatus.CANCELED ||
+                    current.status == DownloadStatus.COMPLETED
+                ) {
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = formatSelector,
+                        attempt = "fila yt-dlp",
+                        result = "cancelado na fila",
+                        durationMs = elapsedMs(queuedAt)
+                    )
+                    return@withLock
+                }
+
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = formatSelector,
+                    attempt = "fila yt-dlp",
+                    result = "iniciou execucao",
+                    durationMs = elapsedMs(queuedAt)
+                )
+                onProgress()
+
+                download(
+                    downloadId = downloadId,
+                    formatSelector = formatSelector,
+                    onProgress = onProgress,
+                    allowAutoUpdateRetry = true,
+                    autoUpdateApplied = false
+                )
+
+                repository.getById(downloadId)?.let { finished ->
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = finished.sourceUrl,
+                        option = formatSelector,
+                        attempt = "fila yt-dlp",
+                        result = "liberou fila: ${finished.status.name.lowercase(Locale.US)}",
+                        error = finished.errorMessage,
+                        durationMs = elapsedMs(queuedAt)
+                    )
+                }
+            }
+        } catch (exception: CancellationException) {
+            repository.getById(downloadId)?.let { current ->
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = formatSelector,
+                    attempt = "fila yt-dlp",
+                    result = "cancelado",
+                    error = exception.message,
+                    durationMs = elapsedMs(queuedAt)
+                )
+            }
+            throw exception
+        }
     }
 
     private suspend fun download(
