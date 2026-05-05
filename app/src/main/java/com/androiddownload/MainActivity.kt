@@ -600,7 +600,7 @@ class MainActivity : Activity() {
             "MP3" in label -> "MP3"
             "MP4" in label -> "MP4"
             DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "HTTP"
-            else -> "AIO"
+            else -> "MIDIA"
         }
     }
 

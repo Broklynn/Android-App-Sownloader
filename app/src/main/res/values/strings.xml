@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">AIO Downloader</string>
-    <string name="app_display_name">AIO Downloader</string>
+    <string name="app_name">DarkWave</string>
+    <string name="app_display_name">DarkWave</string>
     <string name="home">Home</string>
     <string name="downloads">Downloads</string>
     <string name="browser">Navegador</string>
@@ -65,8 +65,8 @@
     <string name="about_title">Sobre</string>
     <string name="about_summary">Informações básicas do app e aviso de uso responsável.</string>
     <string name="about_app_button">Sobre o app</string>
-    <string name="about_app_name">AIO Downloader</string>
-    <string name="about_app_description">Baixe vídeos e músicas em MP4 ou MP3 a partir de links suportados.</string>
+    <string name="about_app_name">DarkWave</string>
+    <string name="about_app_description">Baixe vídeos em MP4 ou músicas em MP3.</string>
     <string name="about_app_responsible_use">Use apenas com conteúdos que você tem direito de baixar.</string>
     <string name="about_app_version">Versão: %1$s</string>
     <string name="about_dialog_title">Sobre o app</string>
