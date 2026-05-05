@@ -637,9 +637,12 @@ class YtDlpDownloader(
             outputFile.copyTo(finalFile, overwrite = true)
             outputFile.delete()
         }
+        val fileBytes = validateFinalFile(
+            finalFile = finalFile,
+            expectedMimeType = expectedMimeType
+        )
         tempDir.deleteRecursively()
         progressStates.remove(downloadId)
-        val fileBytes = finalFile.length().takeIf { it > 0 } ?: current.downloadedBytes
 
         repository.update(
             latest.copy(
@@ -662,7 +665,7 @@ class YtDlpDownloader(
             option = current.qualitySelector.orEmpty(),
             attempt = "nome final",
             result = "arquivo finalizado",
-            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${finalFile.name}",
+            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${finalFile.name}; tamanho=${fileBytes}; ext=${finalFile.extension}",
             durationMs = elapsedMs(finalizeStartedAt)
         )
     }
@@ -708,6 +711,9 @@ class YtDlpDownloader(
             "\n\n${context.getString(R.string.download_error_fallback_applied)}"
         } else {
             ""
+        }
+        if (exception is FinalFileValidationException) {
+            return detail.ifBlank { context.getString(R.string.download_final_file_invalid) } + attemptsMessage
         }
         if (isMp3Request(current.qualitySelector.orEmpty()) && detail.contains("ffmpeg", ignoreCase = true)) {
             return context.getString(R.string.download_mp3_error) + attemptsMessage
@@ -1076,6 +1082,50 @@ class YtDlpDownloader(
         return candidate
     }
 
+    private fun validateFinalFile(
+        finalFile: File,
+        expectedMimeType: String?
+    ): Long {
+        val uri = Uri.fromFile(finalFile)
+        val length = finalFile.length()
+        val extension = finalFile.extension.lowercase(Locale.US)
+        val validationError = when {
+            !finalFile.exists() || !finalFile.isFile -> "arquivo inexistente"
+            length <= 0L -> "arquivo vazio"
+            uri.path.isNullOrBlank() -> "uri invalida"
+            expectedMimeType == "video/mp4" && extension != "mp4" -> "extensao invalida para MP4: .$extension"
+            expectedMimeType == "audio/mpeg" && extension != "mp3" -> "extensao invalida para MP3: .$extension"
+            else -> null
+        }
+
+        if (validationError != null) {
+            YtDlpDiagnostics.record(
+                context = context,
+                url = "app",
+                option = expectedMimeType.orEmpty(),
+                attempt = "validacao final",
+                result = "falha validacao",
+                error = "${finalFile.name}; tamanho=$length; ext=$extension; $validationError"
+            )
+            val message = if (expectedMimeType == "audio/mpeg") {
+                context.getString(R.string.download_final_mp3_invalid)
+            } else {
+                context.getString(R.string.download_final_file_invalid)
+            }
+            throw FinalFileValidationException(message)
+        }
+
+        YtDlpDiagnostics.record(
+            context = context,
+            url = "app",
+            option = expectedMimeType.orEmpty(),
+            attempt = "validacao final",
+            result = "arquivo final validado",
+            error = "${finalFile.name}; tamanho=$length; ext=$extension"
+        )
+        return length
+    }
+
     private fun normalizeExtension(extension: String?): String? {
         val clean = extension
             ?.trim()
@@ -1120,6 +1170,8 @@ class YtDlpDownloader(
         val audioQuality: String? = null,
         val mergeOutputFormat: String? = null
     )
+
+    private class FinalFileValidationException(message: String) : IOException(message)
 
     companion object {
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"

@@ -287,8 +287,8 @@ class HttpDownloader(
                 throwIfCancelRequested(downloadId)
                 throwIfPauseRequested(downloadId)
 
-                val downloadedBytes = resumeOffset + sessionDownloadedBytes
                 moveTempToFinal(tempFile, finalFile)
+                val validatedBytes = validateFinalFile(finalFile)
                 repository.update(
                     current.copy(
                         finalUrl = response.request.url.toString(),
@@ -296,8 +296,8 @@ class HttpDownloader(
                         mimeType = mimeType,
                         destinationUri = Uri.fromFile(finalFile).toString(),
                         tempPath = null,
-                        totalBytes = if (totalBytes >= 0) totalBytes else downloadedBytes,
-                        downloadedBytes = downloadedBytes,
+                        totalBytes = if (totalBytes >= 0) totalBytes else validatedBytes,
+                        downloadedBytes = validatedBytes,
                         progress = 100,
                         speed = 0,
                         status = DownloadStatus.COMPLETED,
@@ -466,6 +466,20 @@ class HttpDownloader(
             }
         }
         tempFile.delete()
+    }
+
+    private fun validateFinalFile(finalFile: File): Long {
+        val uri = Uri.fromFile(finalFile)
+        val length = finalFile.length()
+        if (!finalFile.exists() || !finalFile.isFile || length <= 0L || uri.path.isNullOrBlank()) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_final_file_invalid),
+                    retryable = false
+                )
+            )
+        }
+        return length
     }
 
     private suspend fun handleCanceled(downloadId: Long) {

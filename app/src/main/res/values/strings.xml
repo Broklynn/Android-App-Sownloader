@@ -130,6 +130,8 @@
     <string name="download_http_error">O servidor retornou um erro HTTP.</string>
     <string name="download_not_found_404">Arquivo não encontrado no servidor (404).</string>
     <string name="download_save_error">Não foi possível salvar o arquivo baixado.</string>
+    <string name="download_final_file_invalid">Arquivo final inválido. Tente novamente.</string>
+    <string name="download_final_mp3_invalid">Não foi possível gerar o MP3 final.</string>
     <string name="download_no_space">Espaço insuficiente no dispositivo.</string>
     <string name="download_missing_content_length">O servidor não informou o tamanho do arquivo.</string>
     <string name="download_ytdlp_error">Não foi possível baixar este link com yt-dlp.</string>
