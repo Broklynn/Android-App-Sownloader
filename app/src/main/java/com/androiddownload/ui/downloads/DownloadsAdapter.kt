@@ -1,6 +1,7 @@
 package com.androiddownload.ui.downloads
 
 import android.content.Context
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,6 +12,7 @@ import android.widget.TextView
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.YtDlpQualityOptions
@@ -83,7 +85,7 @@ class DownloadsAdapter(
         private val errorText: TextView = view.findViewById(R.id.errorText)
 
         fun bind(download: DownloadEntity) {
-            fileNameText.text = download.fileName
+            fileNameText.text = displayTitle(download)
             statusText.text = statusLabel(download.status)
             statusText.setTextColor(statusColor(download.status))
             val formatLabel = YtDlpQualityOptions.labelForDownload(root.context, download)
@@ -94,8 +96,10 @@ class DownloadsAdapter(
             val progress = normalizedProgress(download)
             progressBar.isIndeterminate = indeterminate
             progressBar.progress = progress
-            progressText.text = progressLabel(indeterminate, progress)
-            sizeText.text = buildSizeText(download)
+            progressText.text = progressLabel(download, indeterminate, progress)
+            val sizeLabel = buildSizeText(download)
+            sizeText.text = sizeLabel
+            sizeText.visibility = if (sizeLabel.isBlank()) View.GONE else View.VISIBLE
             speedText.text = FileSizeFormatter.formatSpeed(download.speed).ifBlank {
                 root.context.getString(R.string.not_available)
             }
@@ -128,10 +132,27 @@ class DownloadsAdapter(
             root.setOnClickListener { onItemClick(download) }
 
             if (download.status == DownloadStatus.FAILED && !download.errorMessage.isNullOrBlank()) {
-                errorText.text = download.errorMessage
+                errorText.text = DownloadErrorFormatter.friendlyMessage(root.context, download.errorMessage)
                 errorText.visibility = View.VISIBLE
             } else {
                 errorText.visibility = View.GONE
+            }
+        }
+
+        private fun displayTitle(download: DownloadEntity): String {
+            val unavailable = root.context.getString(R.string.not_available)
+            val rawFileName = download.fileName.trim()
+            if (rawFileName.isNotBlank() && !rawFileName.equals(unavailable, ignoreCase = true)) {
+                return rawFileName
+            }
+            val urlName = runCatching {
+                Uri.decode(Uri.parse(download.sourceUrl).lastPathSegment.orEmpty())
+            }.getOrDefault("").substringBefore('?').substringBefore('#').trim()
+            if (urlName.isNotBlank()) return urlName
+            return if (download.status == DownloadStatus.FAILED) {
+                root.context.getString(R.string.download_title_failed)
+            } else {
+                root.context.getString(R.string.download_title_unknown)
             }
         }
 
@@ -149,11 +170,22 @@ class DownloadsAdapter(
             }
         }
 
-        private fun progressLabel(indeterminate: Boolean, progress: Int): String {
-            return if (indeterminate) {
-                root.context.getString(R.string.download_progress_unknown)
-            } else {
-                "$progress%"
+        private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
+            return when (download.status) {
+                DownloadStatus.QUEUED -> root.context.getString(R.string.status_queued)
+                DownloadStatus.PREPARING -> root.context.getString(R.string.status_preparing_progress)
+                DownloadStatus.RUNNING -> {
+                    val prefix = if (indeterminate) "" else "$progress% "
+                    prefix + root.context.getString(R.string.download_progress_unknown)
+                }
+                DownloadStatus.PAUSED -> if (progress > 0) {
+                    "$progress% ${root.context.getString(R.string.status_paused)}"
+                } else {
+                    root.context.getString(R.string.status_paused)
+                }
+                DownloadStatus.COMPLETED -> "100% ${root.context.getString(R.string.status_completed)}"
+                DownloadStatus.FAILED -> root.context.getString(R.string.status_failed)
+                DownloadStatus.CANCELED -> root.context.getString(R.string.status_canceled)
             }
         }
 
@@ -227,11 +259,11 @@ class DownloadsAdapter(
                 download.status == DownloadStatus.RUNNING ||
                     download.status == DownloadStatus.PREPARING ||
                     download.status == DownloadStatus.QUEUED -> {
-                    root.context.getString(R.string.download_progress_unknown)
+                    ""
                 }
                 download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
                 download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
-                else -> root.context.getString(R.string.download_progress_unknown)
+                else -> ""
             }
         }
 

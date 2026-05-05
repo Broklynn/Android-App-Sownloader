@@ -6,6 +6,7 @@ import android.os.Environment
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.download.data.DownloadRepository
@@ -38,7 +39,10 @@ class YtDlpDownloader(
     private var initialized = false
 
     @Volatile
-    private var updateAttempted = false
+    private var autoUpdateInProgress = false
+
+    @Volatile
+    private var lastAutoUpdateAttemptAt = 0L
 
     data class ProgressSnapshot(
         val percent: Int = 0,
@@ -56,7 +60,6 @@ class YtDlpDownloader(
             try {
                 FFmpeg.getInstance().init(context.applicationContext)
                 YoutubeDL.getInstance().init(context.applicationContext)
-                updateBinaryOnce()
                 initialized = true
             } catch (_: YoutubeDLException) {
                 initialized = false
@@ -68,12 +71,7 @@ class YtDlpDownloader(
         return withContext(Dispatchers.IO) {
             initialize()
             if (!initialized) return@withContext false
-            runCatching {
-                YoutubeDL.getInstance().updateYoutubeDL(
-                    context.applicationContext,
-                    YoutubeDL.UpdateChannel.NIGHTLY
-                )
-            }.isSuccess
+            runYtDlpUpdate()
         }
     }
 
@@ -81,6 +79,20 @@ class YtDlpDownloader(
         downloadId: Long,
         formatSelector: String = "best",
         onProgress: suspend () -> Unit = {}
+    ) {
+        download(
+            downloadId = downloadId,
+            formatSelector = formatSelector,
+            onProgress = onProgress,
+            allowAutoUpdateRetry = true
+        )
+    }
+
+    private suspend fun download(
+        downloadId: Long,
+        formatSelector: String = "best",
+        onProgress: suspend () -> Unit = {},
+        allowAutoUpdateRetry: Boolean
     ) {
         withContext(Dispatchers.IO) {
             initialize()
@@ -146,7 +158,20 @@ class YtDlpDownloader(
 
                 val latest = repository.getById(downloadId) ?: current
                 if (latest.status != DownloadStatus.CANCELED) {
-                    handleFailure(downloadId, current, lastException ?: IOException(context.getString(R.string.download_audio_error)))
+                    val failure = lastException ?: IOException(context.getString(R.string.download_audio_error))
+                    if (allowAutoUpdateRetry && shouldAutoUpdateAndRetry(current, failure)) {
+                        val updated = runAutoUpdateIfAllowed()
+                        if (updated && !isCanceled(downloadId)) {
+                            download(
+                                downloadId = downloadId,
+                                formatSelector = formatSelector,
+                                onProgress = onProgress,
+                                allowAutoUpdateRetry = false
+                            )
+                            return@withContext
+                        }
+                    }
+                    handleFailure(downloadId, current, failure)
                 }
             } finally {
                 activeProcessIds.remove(downloadId)
@@ -411,6 +436,14 @@ class YtDlpDownloader(
         if (isMp3Request(current.qualitySelector.orEmpty()) && detail.contains("ffmpeg", ignoreCase = true)) {
             return context.getString(R.string.download_mp3_error)
         }
+        if (DownloadErrorFormatter.classify(detail) != DownloadErrorFormatter.ErrorKind.GENERIC) {
+            val friendly = DownloadErrorFormatter.friendlyMessage(context, detail)
+            return if (detail.isBlank()) {
+                friendly
+            } else {
+                "$friendly\n\n${context.getString(R.string.download_error_technical_details)}\n$detail"
+            }
+        }
         if (isAudioRequest(current.qualitySelector.orEmpty())) {
             return context.getString(R.string.download_audio_error)
         }
@@ -513,15 +546,39 @@ class YtDlpDownloader(
             selector == YtDlpQualityOptions.SELECTOR_MP4_480P
     }
 
-    private fun updateBinaryOnce() {
-        if (updateAttempted) return
-        updateAttempted = true
-        runCatching {
+    private fun shouldAutoUpdateAndRetry(current: DownloadEntity, exception: Exception): Boolean {
+        if (!isYoutubeUrl(current.sourceUrl)) return false
+        if (!isAutoUpdateEnabled()) return false
+        return DownloadErrorFormatter.isYoutubeRecoverable(exception.message)
+    }
+
+    private fun isAutoUpdateEnabled(): Boolean {
+        return context.getSharedPreferences(SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
+    }
+
+    private fun runAutoUpdateIfAllowed(): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(this) {
+            if (autoUpdateInProgress) return false
+            if (now - lastAutoUpdateAttemptAt < AUTO_UPDATE_COOLDOWN_MS) return false
+            autoUpdateInProgress = true
+            lastAutoUpdateAttemptAt = now
+        }
+        return try {
+            runYtDlpUpdate()
+        } finally {
+            autoUpdateInProgress = false
+        }
+    }
+
+    private fun runYtDlpUpdate(): Boolean {
+        return runCatching {
             YoutubeDL.getInstance().updateYoutubeDL(
                 context.applicationContext,
                 YoutubeDL.UpdateChannel.NIGHTLY
             )
-        }
+        }.isSuccess
     }
 
     private fun isYoutubeUrl(url: String): Boolean {
@@ -607,4 +664,10 @@ class YtDlpDownloader(
         val audioQuality: String? = null,
         val mergeOutputFormat: String? = null
     )
+
+    companion object {
+        private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
+        private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
+        private const val AUTO_UPDATE_COOLDOWN_MS = 30L * 60L * 1000L
+    }
 }

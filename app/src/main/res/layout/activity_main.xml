@@ -513,12 +513,13 @@
                         android:background="@drawable/bg_tab_selected"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
                         android:text="@string/downloads_filter_all"
                         android:textAllCaps="false"
                         android:textColor="@color/tab_text"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/downloadsFilterActiveButton"
@@ -528,12 +529,13 @@
                         android:background="@drawable/bg_tab_unselected"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
                         android:text="@string/downloads_filter_active"
                         android:textAllCaps="false"
                         android:textColor="@color/tab_text"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/downloadsFilterPausedButton"
@@ -543,12 +545,13 @@
                         android:background="@drawable/bg_tab_unselected"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
                         android:text="@string/downloads_filter_paused"
                         android:textAllCaps="false"
                         android:textColor="@color/tab_text"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/downloadsFilterCompletedButton"
@@ -558,12 +561,13 @@
                         android:background="@drawable/bg_tab_unselected"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
                         android:text="@string/downloads_filter_completed"
                         android:textAllCaps="false"
                         android:textColor="@color/tab_text"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/downloadsFilterFailedButton"
@@ -573,28 +577,29 @@
                         android:background="@drawable/bg_tab_unselected"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
                         android:text="@string/downloads_filter_failed"
                         android:textAllCaps="false"
                         android:textColor="@color/tab_text"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
-                    <Button
-                        android:id="@+id/clearFinishedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="38dp"
-                        android:background="@drawable/bg_button_secondary"
-                        android:minHeight="0dp"
-                        android:minWidth="0dp"
-                        android:paddingStart="16dp"
-                        android:paddingEnd="16dp"
-                        android:text="@string/clear_finished_downloads"
-                        android:textAllCaps="false"
-                        android:textColor="@color/button_secondary_text"
-                        android:textSize="12sp" />
                 </LinearLayout>
             </HorizontalScrollView>
+
+            <Button
+                android:id="@+id/clearFinishedButton"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_button_secondary"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="@string/clear_finished_downloads"
+                android:textAllCaps="false"
+                android:textColor="@color/button_secondary_text"
+                android:textSize="12sp" />
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -612,7 +617,7 @@
                     android:dividerHeight="12dp"
                     android:overScrollMode="never"
                     android:paddingTop="2dp"
-                    android:paddingBottom="8dp" />
+                    android:paddingBottom="24dp" />
 
                 <TextView
                     android:id="@+id/emptyDownloadsText"
@@ -949,6 +954,35 @@
                         android:background="@drawable/bg_button_secondary"
                         android:minHeight="0dp"
                         android:text="@string/update_ytdlp"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_secondary_text"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:includeFontPadding="false"
+                        android:text="@string/auto_update_ytdlp_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/auto_update_ytdlp_help"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/autoUpdateYtDlpButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_button_secondary"
+                        android:minHeight="0dp"
                         android:textAllCaps="false"
                         android:textColor="@color/button_secondary_text"
                         android:textSize="14sp" />

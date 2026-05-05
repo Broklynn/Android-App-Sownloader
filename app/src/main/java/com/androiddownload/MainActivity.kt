@@ -5,12 +5,13 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.DialogInterface
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Environment
 import android.os.Build
@@ -92,6 +93,7 @@ class MainActivity : Activity() {
     private lateinit var downloadLocationText: TextView
     private lateinit var ytdlpUpdateStatusText: TextView
     private lateinit var updateYtDlpButton: Button
+    private lateinit var autoUpdateYtDlpButton: Button
     private lateinit var aboutAppButton: Button
     private lateinit var settingsCloseButton: Button
     private lateinit var homeController: HomeController
@@ -169,6 +171,7 @@ class MainActivity : Activity() {
         downloadLocationText = findViewById(R.id.downloadLocationText)
         ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
         updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
+        autoUpdateYtDlpButton = findViewById(R.id.autoUpdateYtDlpButton)
         aboutAppButton = findViewById(R.id.aboutAppButton)
         settingsCloseButton = findViewById(R.id.settingsCloseButton)
         homeTabButton = findViewById(R.id.homeTabButton)
@@ -247,6 +250,7 @@ class MainActivity : Activity() {
             renderRecentDownloads()
         }
         updateYtDlpButton.setOnClickListener { updateYtDlpManually() }
+        autoUpdateYtDlpButton.setOnClickListener { toggleAutoUpdateYtDlp() }
         aboutAppButton.setOnClickListener { showAboutDialog() }
         downloadsSearchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -339,15 +343,16 @@ class MainActivity : Activity() {
     }
 
     private fun showClearFinishedDownloadsDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.clear_finished_downloads_title))
-            .setMessage(getString(R.string.clear_finished_downloads_message))
-            .setPositiveButton(android.R.string.ok) { dialog: DialogInterface, _: Int ->
-                dialog.dismiss()
+        showDarkMessageDialog(
+            title = getString(R.string.clear_finished_downloads_title),
+            message = getString(R.string.clear_finished_downloads_message),
+            buttons = listOf(
+                DarkDialogButton(getString(android.R.string.cancel)),
+                DarkDialogButton(getString(android.R.string.ok), primary = true) {
                 clearFinishedDownloads()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+                }
+            )
+        )
     }
 
     private fun setDownloadsFilter(filter: DownloadsFilter, refreshOnly: Boolean = false) {
@@ -552,7 +557,7 @@ class MainActivity : Activity() {
         activeDownloadNameText.text = activeDownload.fileName
         activeDownloadFormatText.text =
             "${formatLabelForDetails(activeDownload)} - ${downloadStatusLabel(activeDownload.status)}"
-        activeDownloadProgressText.text = progressLabel(indeterminate, progress)
+        activeDownloadProgressText.text = progressLabel(activeDownload, indeterminate, progress)
         activeDownloadProgressBar.isIndeterminate = indeterminate
         activeDownloadProgressBar.progress = progress
         activeDownloadSpeedText.text = formatSpeedForDetails(activeDownload.speed)
@@ -573,11 +578,22 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun progressLabel(indeterminate: Boolean, progress: Int): String {
-        return if (indeterminate) {
-            getString(R.string.download_progress_unknown)
-        } else {
-            "$progress%"
+    private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
+        return when (download.status) {
+            DownloadStatus.QUEUED -> getString(R.string.status_queued)
+            DownloadStatus.PREPARING -> getString(R.string.status_preparing_progress)
+            DownloadStatus.RUNNING -> {
+                val prefix = if (indeterminate) "" else "$progress% "
+                prefix + getString(R.string.download_progress_unknown)
+            }
+            DownloadStatus.PAUSED -> if (progress > 0) {
+                "$progress% ${getString(R.string.status_paused)}"
+            } else {
+                getString(R.string.status_paused)
+            }
+            DownloadStatus.COMPLETED -> "100% ${getString(R.string.status_completed)}"
+            DownloadStatus.FAILED -> getString(R.string.status_failed)
+            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
         }
     }
 
@@ -590,7 +606,7 @@ class MainActivity : Activity() {
             }
             download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
             download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
-            else -> getString(R.string.download_progress_unknown)
+            else -> ""
         }
     }
 
@@ -679,23 +695,25 @@ class MainActivity : Activity() {
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
         val contentView = buildDownloadDetailsView(download)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(download.fileName)
-            .setView(contentView)
-            .setPositiveButton(R.string.details_copy_url) { dialog: DialogInterface, _: Int ->
+        val buttons = mutableListOf(
+            DarkDialogButton(getString(R.string.details_close)),
+            DarkDialogButton(getString(R.string.details_copy_url), primary = true) {
                 copyDownloadUrl(download)
-                dialog.dismiss()
             }
-            .setNegativeButton(R.string.details_close, null)
-
+        )
         if (download.status == DownloadStatus.COMPLETED) {
-            dialog.setNeutralButton(getString(R.string.open)) { dialog: DialogInterface, _: Int ->
-                dialog.dismiss()
+            buttons.add(
+                DarkDialogButton(getString(R.string.open)) {
                 openCompletedDownload(download)
-            }
+                }
+            )
         }
 
-        dialog.show()
+        showDarkContentDialog(
+            title = download.fileName,
+            contentView = contentView,
+            buttons = buttons
+        )
     }
 
     private fun buildDownloadDetailsView(download: DownloadEntity): View {
@@ -710,6 +728,7 @@ class MainActivity : Activity() {
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(padding, padding, padding, padding)
             addView(
                 ScrollView(context).apply {
@@ -793,10 +812,15 @@ class MainActivity : Activity() {
     }
 
     private fun progressLabelForDetails(download: DownloadEntity): String {
-        return if (download.totalBytes > 0L) {
-            "${download.progress.coerceIn(0, 100)}%"
-        } else {
-            getString(R.string.download_progress_unknown)
+        val progress = normalizedProgress(download)
+        return when (download.status) {
+            DownloadStatus.QUEUED -> getString(R.string.status_queued)
+            DownloadStatus.PREPARING -> getString(R.string.status_preparing_progress)
+            DownloadStatus.RUNNING -> progressLabel(download, isIndeterminateDownload(download), progress)
+            DownloadStatus.PAUSED -> if (progress > 0) "$progress% ${getString(R.string.status_paused)}" else getString(R.string.status_paused)
+            DownloadStatus.COMPLETED -> "100% ${getString(R.string.status_completed)}"
+            DownloadStatus.FAILED -> getString(R.string.status_failed)
+            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
         }
     }
 
@@ -848,6 +872,7 @@ class MainActivity : Activity() {
         updateDefaultQualityText()
         updateDownloadLocationText()
         updateYtDlpUpdateUiState()
+        updateAutoUpdateYtDlpUiState()
         updateSelectedTab(null)
         if (scrollToDownloadLocation) {
             settingsContainer.post {
@@ -912,11 +937,11 @@ class MainActivity : Activity() {
             append(getString(R.string.about_app_responsible_use))
         }
 
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.about_dialog_title))
-            .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+        showDarkMessageDialog(
+            title = getString(R.string.about_dialog_title),
+            message = message,
+            buttons = listOf(DarkDialogButton(getString(android.R.string.ok), primary = true))
+        )
     }
 
     private fun getPreferredDownloadDirectory(): File {
@@ -967,6 +992,194 @@ class MainActivity : Activity() {
             else -> {
                 ytdlpUpdateStatusText.visibility = View.GONE
             }
+        }
+    }
+
+    private fun toggleAutoUpdateYtDlp() {
+        val enabled = settingsPreferences.getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
+        settingsPreferences.edit()
+            .putBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, !enabled)
+            .apply()
+        updateAutoUpdateYtDlpUiState()
+    }
+
+    private fun updateAutoUpdateYtDlpUiState() {
+        val enabled = settingsPreferences.getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
+        autoUpdateYtDlpButton.text = getString(
+            if (enabled) R.string.auto_update_ytdlp_enabled else R.string.auto_update_ytdlp_disabled
+        )
+    }
+
+    private fun showDarkMessageDialog(
+        title: String,
+        message: String,
+        buttons: List<DarkDialogButton>
+    ) {
+        val messageView = TextView(this).apply {
+            text = message
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 14f
+            setLineSpacing(dp(2).toFloat(), 1f)
+        }
+        showDarkContentDialog(title, messageView, buttons)
+    }
+
+    private fun showDarkOptionsDialog(
+        title: String,
+        options: List<DarkOption>,
+        selectedIndex: Int = -1,
+        neutralButton: DarkDialogButton? = null,
+        onSelected: (Int) -> Unit
+    ) {
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        var lastSection: String? = null
+        lateinit var dialog: AlertDialog
+        options.forEachIndexed { index, option ->
+            if (!option.section.isNullOrBlank() && option.section != lastSection) {
+                lastSection = option.section
+                list.addView(
+                    TextView(this).apply {
+                        text = option.section
+                        setTextColor(getColor(R.color.brand))
+                        textSize = 12f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        includeFontPadding = false
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = if (list.childCount == 0) 0 else dp(12)
+                        bottomMargin = dp(8)
+                    }
+                )
+            }
+            val selected = index == selectedIndex
+            list.addView(
+                TextView(this).apply {
+                    text = option.label
+                    setTextColor(getColor(if (selected) R.color.brand else R.color.text_primary))
+                    textSize = 14f
+                    typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+                    setBackgroundResource(if (selected) R.drawable.bg_button_secondary else R.drawable.bg_dialog_option)
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    isClickable = true
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxLines = 3
+                    setOnClickListener {
+                        dialog.dismiss()
+                        onSelected(index)
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+        }
+
+        val buttons = buildList {
+            neutralButton?.let { add(it) }
+            add(DarkDialogButton(getString(R.string.details_close)))
+        }
+        dialog = showDarkContentDialog(
+            title = title,
+            contentView = ScrollView(this).apply { addView(list) },
+            buttons = buttons
+        )
+    }
+
+    private fun showDarkContentDialog(
+        title: String,
+        contentView: View,
+        buttons: List<DarkDialogButton>
+    ): AlertDialog {
+        lateinit var dialog: AlertDialog
+        val padding = dp(20)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.bg_dialog_surface)
+            setPadding(padding, padding, padding, padding)
+            addView(
+                TextView(context).apply {
+                    text = title
+                    setTextColor(getColor(R.color.text_primary))
+                    textSize = 20f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(14)
+                }
+            )
+            addView(
+                contentView,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.END
+                    buttons.forEachIndexed { index, buttonSpec ->
+                        addView(
+                            Button(context).apply {
+                                text = buttonSpec.label
+                                isAllCaps = false
+                                minHeight = 0
+                                minWidth = 0
+                                setTextColor(getColor(if (buttonSpec.primary) R.color.button_primary_text else R.color.button_secondary_text))
+                                setBackgroundResource(if (buttonSpec.primary) R.drawable.bg_button_primary else R.drawable.bg_button_secondary)
+                                setPadding(dp(14), 0, dp(14), 0)
+                                setOnClickListener {
+                                    dialog.dismiss()
+                                    buttonSpec.onClick?.invoke()
+                                }
+                            },
+                            LinearLayout.LayoutParams(
+                                0,
+                                dp(42),
+                                1f
+                            ).apply {
+                                if (index > 0) leftMargin = dp(8)
+                            }
+                        )
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(18)
+                }
+            )
+        }
+
+        dialog = AlertDialog.Builder(this)
+            .setView(container)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        }
+        dialog.show()
+        return dialog
+    }
+
+    private fun sectionForQualityLabel(label: String): String? {
+        return when {
+            label.startsWith("MP4", ignoreCase = true) -> getString(R.string.quality_section_video)
+            label.startsWith("MP3", ignoreCase = true) -> getString(R.string.quality_section_audio)
+            else -> null
         }
     }
 
@@ -1044,19 +1257,16 @@ class MainActivity : Activity() {
         homeController: HomeController? = null
     ) {
         val options = YtDlpQualityOptions.build(this@MainActivity, null)
-        val dialogTitle = YtDlpQualityOptions.displayTitle(this@MainActivity, null)
-
-        AlertDialog.Builder(this@MainActivity)
-            .setTitle(dialogTitle)
-            .setItems(options.map { it.label }.toTypedArray()) { dialog: DialogInterface, which: Int ->
-                dialog.dismiss()
+        showDarkOptionsDialog(
+            title = getString(R.string.choose_quality_title),
+            options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) }
+        ) { which ->
                 startQueuedDownload(
                     url = url,
                     qualitySelector = options[which].formatSelector,
                     homeController = homeController
                 )
             }
-            .show()
     }
 
     private fun startQueuedDownload(
@@ -1112,17 +1322,14 @@ class MainActivity : Activity() {
         val currentIndex = options.indexOfFirst {
             it.preferenceValue == selectedDefaultQualityOption().preferenceValue
         }.coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.default_video_quality_title))
-            .setSingleChoiceItems(
-                options.map { it.label }.toTypedArray(),
-                currentIndex
-            ) { dialog: DialogInterface, which: Int ->
+        showDarkOptionsDialog(
+            title = getString(R.string.default_video_quality_title),
+            options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) },
+            selectedIndex = currentIndex
+        ) { which ->
                 saveDefaultQualityOption(options[which])
                 updateDefaultQualityText()
-                dialog.dismiss()
             }
-            .show()
     }
 
     private fun updateDefaultQualityText() {
@@ -1409,21 +1616,19 @@ class MainActivity : Activity() {
         }
         val labels = candidates.map { candidate ->
             "${candidate.displayName}\n${candidate.typeLabel}"
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(filter.dialogTitle())
-            .setItems(labels) { dialog: DialogInterface, which: Int ->
-                dialog.dismiss()
+        }
+        showDarkOptionsDialog(
+            title = filter.dialogTitle(),
+            options = labels.map { DarkOption(it) },
+            neutralButton = DarkDialogButton(getString(R.string.browser_detected_media_filter_button)) {
+                showDetectedMediaFilterDialog()
+            }
+        ) { which ->
                 handleDownloadRequest(
                     rawUrl = candidates[which].url,
                     onError = { showToast(it) }
                 )
             }
-            .setNeutralButton(getString(R.string.browser_detected_media_filter_button)) { dialog: DialogInterface, _: Int ->
-                dialog.dismiss()
-                showDetectedMediaFilterDialog()
-            }
-            .show()
     }
 
     private fun showDetectedMediaFilterDialog() {
@@ -1433,14 +1638,13 @@ class MainActivity : Activity() {
             MediaFilter.AUDIOS,
             MediaFilter.FILES
         )
-        val labels = filters.map { it.label() }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.browser_detected_media_filter_title))
-            .setItems(labels) { dialog: DialogInterface, which: Int ->
-                dialog.dismiss()
+        val labels = filters.map { it.label() }
+        showDarkOptionsDialog(
+            title = getString(R.string.browser_detected_media_filter_title),
+            options = labels.map { DarkOption(it) }
+        ) { which ->
                 showDetectedMediaListDialog(filters[which])
             }
-            .show()
     }
 
     private fun MediaCandidate.matchesFilter(filter: MediaFilter): Boolean {
@@ -1694,10 +1898,22 @@ class MainActivity : Activity() {
         BROWSER
     }
 
+    private data class DarkDialogButton(
+        val label: String,
+        val primary: Boolean = false,
+        val onClick: (() -> Unit)? = null
+    )
+
+    private data class DarkOption(
+        val label: String,
+        val section: String? = null
+    )
+
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
+        private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
         private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
         private const val PREF_RECENT_DOWNLOAD_URLS = "recent_download_urls"
         private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
