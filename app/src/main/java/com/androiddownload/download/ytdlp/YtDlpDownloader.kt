@@ -8,6 +8,7 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
+import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
@@ -116,6 +117,22 @@ class YtDlpDownloader(
         ) {
             return
         }
+        if (!NetworkUtils.hasInternet(context)) {
+            val message = context.getString(R.string.download_no_internet)
+            repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+            progressStates.remove(downloadId)
+            YtDlpDiagnostics.record(
+                context = context,
+                url = queuedDownload.sourceUrl,
+                option = formatSelector,
+                attempt = "preflight",
+                result = "internet indisponivel",
+                error = message,
+                type = "rede"
+            )
+            onProgress()
+            return
+        }
 
         repository.updateStatus(downloadId, DownloadStatus.QUEUED)
         progressStates.remove(downloadId)
@@ -161,6 +178,7 @@ class YtDlpDownloader(
                     formatSelector = formatSelector,
                     onProgress = onProgress,
                     allowAutoUpdateRetry = true,
+                    allowNetworkRetry = true,
                     autoUpdateApplied = false
                 )
 
@@ -197,6 +215,7 @@ class YtDlpDownloader(
         formatSelector: String = "best",
         onProgress: suspend () -> Unit = {},
         allowAutoUpdateRetry: Boolean,
+        allowNetworkRetry: Boolean,
         autoUpdateApplied: Boolean
     ) {
         withContext(Dispatchers.IO) {
@@ -212,6 +231,22 @@ class YtDlpDownloader(
             }
 
             val current = repository.getById(downloadId) ?: return@withContext
+            if (!NetworkUtils.hasInternet(context)) {
+                val message = context.getString(R.string.download_no_internet)
+                repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+                progressStates.remove(downloadId)
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = formatSelector,
+                    attempt = "preflight",
+                    result = "internet indisponivel",
+                    error = message,
+                    type = "rede",
+                    durationMs = elapsedMs(flowStartedAt)
+                )
+                return@withContext
+            }
             YtDlpDiagnostics.record(
                 context = context,
                 url = current.sourceUrl,
@@ -361,6 +396,31 @@ class YtDlpDownloader(
                 val latest = repository.getById(downloadId) ?: current
                 if (latest.status != DownloadStatus.CANCELED) {
                     val failure = lastException ?: IOException(context.getString(R.string.download_audio_error))
+                    if (allowNetworkRetry &&
+                        DownloadErrorFormatter.isTemporaryNetworkError(failure.message) &&
+                        !isCanceled(downloadId) &&
+                        NetworkUtils.hasInternet(context)
+                    ) {
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = selector.ifBlank { formatSelector },
+                            attempt = "yt-dlp tentativa 2",
+                            result = "retry yt-dlp tentativa 2",
+                            error = failure.message,
+                            type = "rede",
+                            durationMs = elapsedMs(flowStartedAt)
+                        )
+                        download(
+                            downloadId = downloadId,
+                            formatSelector = formatSelector,
+                            onProgress = onProgress,
+                            allowAutoUpdateRetry = allowAutoUpdateRetry,
+                            allowNetworkRetry = false,
+                            autoUpdateApplied = autoUpdateApplied
+                        )
+                        return@withContext
+                    }
                     if (allowAutoUpdateRetry && shouldAutoUpdateAndRetry(current, failure)) {
                         val updated = runAutoUpdateIfAllowed()
                         YtDlpDiagnostics.record(
@@ -379,6 +439,7 @@ class YtDlpDownloader(
                                 formatSelector = formatSelector,
                                 onProgress = onProgress,
                                 allowAutoUpdateRetry = false,
+                                allowNetworkRetry = false,
                                 autoUpdateApplied = true
                             )
                             return@withContext
@@ -510,6 +571,7 @@ class YtDlpDownloader(
         onProgress: suspend () -> Unit
     ) {
         val lastCallbackAt = AtomicLong(System.currentTimeMillis())
+        val lastProgressAt = AtomicLong(System.currentTimeMillis())
         val callbackSeen = AtomicBoolean(false)
         val executor = Executors.newSingleThreadExecutor()
         val future = executor.submit(Callable {
@@ -542,6 +604,9 @@ class YtDlpDownloader(
                     return@runBlocking
                 }
 
+                if (isMeaningfulProgress(previousState, updatedSnapshot)) {
+                    lastProgressAt.set(now)
+                }
                 progressStates[downloadId] = updatedSnapshot
 
                 val updatedDownload = latest.copy(
@@ -593,8 +658,14 @@ class YtDlpDownloader(
                         future.cancel(true)
                         throw IOException(context.getString(R.string.status_canceled))
                     }
-                    val silenceMs = System.currentTimeMillis() - lastCallbackAt.get()
-                    if (silenceMs >= EXECUTE_NO_CALLBACK_TIMEOUT_MS) {
+                    val now = System.currentTimeMillis()
+                    val timeoutMs = if (callbackSeen.get()) {
+                        EXECUTE_NO_PROGRESS_TIMEOUT_MS
+                    } else {
+                        EXECUTE_FIRST_CALLBACK_TIMEOUT_MS
+                    }
+                    val silenceMs = now - if (callbackSeen.get()) lastProgressAt.get() else lastCallbackAt.get()
+                    if (silenceMs >= timeoutMs) {
                         YoutubeDL.getInstance().destroyProcessById(processId)
                         future.cancel(true)
                         YtDlpDiagnostics.record(
@@ -602,11 +673,16 @@ class YtDlpDownloader(
                             url = current.sourceUrl,
                             option = current.qualitySelector.orEmpty(),
                             attempt = attempt.name,
-                            result = "timeout execute",
-                            error = "Sem callback/progresso por ${silenceMs / 1000}s",
+                            result = "download parado sem progresso",
+                            error = if (callbackSeen.get()) {
+                                "Sem progresso por ${silenceMs / 1000}s"
+                            } else {
+                                "Sem primeiro callback por ${silenceMs / 1000}s"
+                            },
+                            type = "rede",
                             durationMs = elapsedMs(attemptStartedAt)
                         )
-                        throw IOException(context.getString(R.string.download_prepare_timeout))
+                        throw IOException(context.getString(R.string.download_connection_timeout))
                     }
                 }
             }
@@ -639,6 +715,16 @@ class YtDlpDownloader(
         if (current.totalBytes != previous.totalBytes) return true
         if (current.etaSeconds != previous.etaSeconds) return true
         return now - previous.lastUpdatedAt >= progressUpdateIntervalMs
+    }
+
+    private fun isMeaningfulProgress(
+        previous: ProgressSnapshot?,
+        current: ProgressSnapshot
+    ): Boolean {
+        if (previous == null) return true
+        if (current.percent != previous.percent) return true
+        if (current.downloadedBytes >= 0 && current.downloadedBytes != previous.downloadedBytes) return true
+        return current.totalBytes > 0 && current.totalBytes != previous.totalBytes
     }
 
     private fun parseProgressSnapshot(
@@ -767,14 +853,25 @@ class YtDlpDownloader(
             )
         )
         repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+        val isNetworkFailure = DownloadErrorFormatter.isTemporaryNetworkError(exception.message) ||
+            DownloadErrorFormatter.classify(exception.message) == DownloadErrorFormatter.ErrorKind.NO_INTERNET
         YtDlpDiagnostics.record(
             context = context,
             url = current.sourceUrl,
             option = current.qualitySelector.orEmpty(),
             attempt = lastAttemptName,
-            result = "falha final",
+            result = if (isNetworkFailure) {
+                "falha final de rede"
+            } else {
+                "falha final"
+            },
             error = exception.message,
             autoUpdate = autoUpdateApplied,
+            type = if (isNetworkFailure) {
+                "rede"
+            } else {
+                "yt-dlp"
+            },
             durationMs = flowStartedAt?.let { elapsedMs(it) }
         )
     }
@@ -1259,7 +1356,8 @@ class YtDlpDownloader(
         private const val UPDATE_TIMEOUT_MS = 60L * 1000L
         private const val PREPARE_BEFORE_EXECUTE_TIMEOUT_MS = 60L * 1000L
         private const val EXECUTE_WATCHDOG_POLL_MS = 5L * 1000L
-        private const val EXECUTE_NO_CALLBACK_TIMEOUT_MS = 120L * 1000L
+        private const val EXECUTE_FIRST_CALLBACK_TIMEOUT_MS = 120L * 1000L
+        private const val EXECUTE_NO_PROGRESS_TIMEOUT_MS = 240L * 1000L
         private val GENERIC_OUTPUT_NAMES = setOf(
             "download",
             "file",

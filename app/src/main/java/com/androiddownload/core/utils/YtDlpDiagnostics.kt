@@ -22,11 +22,12 @@ object YtDlpDiagnostics {
         result: String,
         error: String? = null,
         autoUpdate: Boolean = false,
-        durationMs: Long? = null
+        durationMs: Long? = null,
+        type: String = "yt-dlp"
     ) {
         val event = JSONObject().apply {
             put("time", System.currentTimeMillis())
-            put("type", "yt-dlp")
+            put("type", type)
             put("url", summarizeUrl(url))
             put("option", option.ifBlank { "best" })
             put("attempt", attempt)

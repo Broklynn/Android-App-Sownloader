@@ -27,7 +27,8 @@ class AppContainer(context: Context) {
         .followRedirects(true)
         .followSslRedirects(true)
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
     val notifier: DownloadNotifier = DownloadNotifier(appContext)

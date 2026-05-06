@@ -7,7 +7,10 @@ import android.os.SystemClock
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
+import com.androiddownload.core.utils.NetworkUtils
+import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -31,6 +34,7 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLException
 
 enum class DownloadMode {
     NORMAL,
@@ -55,6 +59,20 @@ class HttpDownloader(
         var lastFailure: DownloadFailure? = null
 
         try {
+            val initial = repository.getById(downloadId) ?: return
+            if (!NetworkUtils.hasInternet(context)) {
+                val message = context.getString(R.string.download_no_internet)
+                repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+                recordNetworkDiagnostic(
+                    download = initial,
+                    attempt = "preflight",
+                    result = "internet indisponivel",
+                    error = message
+                )
+                onProgress()
+                return
+            }
+
             for (attempt in 1..MAX_ATTEMPTS) {
                 val current = repository.getById(downloadId) ?: return
                 if (current.status == DownloadStatus.CANCELED ||
@@ -81,11 +99,26 @@ class HttpDownloader(
                     if (!exception.failure.retryable || attempt >= MAX_ATTEMPTS || isUserCanceledOrPaused(downloadId)) {
                         break
                     }
-                    delay(RETRY_BACKOFF_MS * attempt)
+                    val nextAttempt = attempt + 1
+                    recordNetworkDiagnostic(
+                        download = current,
+                        attempt = "HTTP tentativa $nextAttempt",
+                        result = "${networkDiagnosticResult(exception.failure.message)}; retry HTTP tentativa $nextAttempt",
+                        error = exception.failure.message
+                    )
+                    delay(RETRY_BACKOFF_MS.getOrElse(nextAttempt - 1) { RETRY_BACKOFF_MS.last() })
                 }
             }
 
             if (lastFailure != null && !isUserCanceledOrPaused(downloadId)) {
+                repository.getById(downloadId)?.let { current ->
+                    recordNetworkDiagnostic(
+                        download = current,
+                        attempt = "falha final",
+                        result = "${networkDiagnosticResult(lastFailure.message)}; falha final de rede",
+                        error = lastFailure.message
+                    )
+                }
                 repository.updateStatus(downloadId, DownloadStatus.FAILED, lastFailure.message)
             }
         } catch (exception: CancellationException) {
@@ -320,14 +353,14 @@ class HttpDownloader(
         } catch (exception: UnknownHostException) {
             throw DownloadFailureException(
                 DownloadFailure(
-                    message = context.getString(R.string.download_no_internet),
+                    message = context.getString(R.string.download_unknown_host),
                     retryable = true
                 )
             )
         } catch (exception: ConnectException) {
             throw DownloadFailureException(
                 DownloadFailure(
-                    message = context.getString(R.string.download_connection_interrupted),
+                    message = context.getString(R.string.download_connect_failed),
                     retryable = true
                 )
             )
@@ -341,8 +374,15 @@ class HttpDownloader(
         } catch (exception: SocketTimeoutException) {
             throw DownloadFailureException(
                 DownloadFailure(
-                    message = context.getString(R.string.download_connection_interrupted),
+                    message = context.getString(R.string.download_connection_timeout),
                     retryable = true
+                )
+            )
+        } catch (exception: SSLException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = context.getString(R.string.download_ssl_failed),
+                    retryable = false
                 )
             )
         } catch (exception: InterruptedIOException) {
@@ -408,11 +448,43 @@ class HttpDownloader(
             DownloadFailure(
                 message = when (code) {
                     404 -> context.getString(R.string.download_not_found_404)
+                    429 -> "${context.getString(R.string.download_rate_limited)} HTTP 429"
+                    in 500..599 -> "${context.getString(R.string.download_server_unstable)} HTTP $code"
                     else -> "${context.getString(R.string.download_http_error)} $code"
                 },
                 retryable = code >= 500 || code == 408 || code == 429
             )
         )
+    }
+
+    private fun recordNetworkDiagnostic(
+        download: DownloadEntity,
+        attempt: String,
+        result: String,
+        error: String? = null
+    ) {
+        YtDlpDiagnostics.record(
+            context = context,
+            url = download.sourceUrl,
+            option = "HTTP direto",
+            attempt = attempt,
+            result = result,
+            error = error,
+            type = "rede"
+        )
+    }
+
+    private fun networkDiagnosticResult(message: String): String {
+        return when (DownloadErrorFormatter.classify(message)) {
+            DownloadErrorFormatter.ErrorKind.NO_INTERNET -> "internet indisponivel"
+            DownloadErrorFormatter.ErrorKind.UNKNOWN_HOST -> "falha de DNS/conexao"
+            DownloadErrorFormatter.ErrorKind.TIMEOUT -> "timeout de conexao/leitura"
+            DownloadErrorFormatter.ErrorKind.CONNECT_FAILED -> "timeout/falha de conexao"
+            DownloadErrorFormatter.ErrorKind.RATE_LIMITED -> "servidor retornou 429"
+            DownloadErrorFormatter.ErrorKind.SERVER_UNSTABLE -> "servidor retornou 5xx"
+            DownloadErrorFormatter.ErrorKind.CONNECTION_INTERRUPTED -> "conexao interrompida"
+            else -> "falha HTTP"
+        }
     }
 
     private fun createTempFile(downloadId: Long): File {
@@ -628,7 +700,7 @@ class HttpDownloader(
     private companion object {
         const val PROGRESS_INTERVAL_MS = 500L
         const val MAX_ATTEMPTS = 3
-        const val RETRY_BACKOFF_MS = 600L
+        val RETRY_BACKOFF_MS = longArrayOf(0L, 1000L, 3000L)
         val CONTENT_RANGE_REGEX = Regex("""bytes\s+(\d+)-(\d+|\*)/(\d+|\*)""")
         val HTTP_CODE_REGEX = Regex("""HTTP\s+(\d{3})""")
     }

@@ -124,8 +124,14 @@
     <string name="download_no_app_found">Nenhum app instalado para abrir este arquivo.</string>
     <string name="download_open_error">Não foi possível abrir este arquivo.</string>
     <string name="download_resume_not_supported">Este servidor não suporta retomada deste download.</string>
-    <string name="download_no_internet">Sem internet. Verifique sua conexão e tente novamente.</string>
-    <string name="download_connection_interrupted">A conexão foi interrompida durante o download.</string>
+    <string name="download_no_internet">Sem conexão com a internet.</string>
+    <string name="download_unknown_host">Não foi possível conectar. Verifique sua internet.</string>
+    <string name="download_connection_timeout">A conexão demorou demais. Tente novamente.</string>
+    <string name="download_connect_failed">Não foi possível conectar ao servidor.</string>
+    <string name="download_ssl_failed">Falha de segurança na conexão.</string>
+    <string name="download_connection_interrupted">A conexão foi interrompida. Tente novamente.</string>
+    <string name="download_rate_limited">Muitas tentativas. Aguarde um pouco e tente novamente.</string>
+    <string name="download_server_unstable">O servidor está instável. Tente novamente depois.</string>
     <string name="download_invalid_url">URL inválida para download.</string>
     <string name="download_http_error">O servidor retornou um erro HTTP.</string>
     <string name="download_not_found_404">Arquivo não encontrado no servidor (404).</string>
