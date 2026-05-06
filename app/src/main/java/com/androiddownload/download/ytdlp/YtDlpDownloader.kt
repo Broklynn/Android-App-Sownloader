@@ -2,10 +2,10 @@ package com.androiddownload.download.ytdlp
 
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.NetworkUtils
@@ -845,27 +845,47 @@ class YtDlpDownloader(
             expectedMimeType = expectedMimeType,
             metadataTitle = metadataTitle
         )
-        val finalFile = resolveFinalFile(finalName, expectedMimeType)
-        if (!outputFile.renameTo(finalFile)) {
-            outputFile.copyTo(finalFile, overwrite = true)
-            outputFile.delete()
+        val preparedFinalFile = File(tempDir, finalName)
+        if (outputFile.absolutePath != preparedFinalFile.absolutePath) {
+            if (!outputFile.renameTo(preparedFinalFile)) {
+                outputFile.copyTo(preparedFinalFile, overwrite = true)
+                outputFile.delete()
+            }
         }
         val fileBytes = validateFinalFile(
-            finalFile = finalFile,
+            finalFile = preparedFinalFile,
             expectedMimeType = expectedMimeType
         )
+        val savedFile = try {
+            DownloadDestinationResolver.saveToDestination(
+                context = context,
+                sourceFile = preparedFinalFile,
+                preferredName = finalName,
+                mimeType = expectedMimeType
+            )
+        } catch (exception: DownloadDestinationResolver.DestinationException) {
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = current.qualitySelector.orEmpty(),
+                attempt = "destino final",
+                result = "falha ao copiar para destino final",
+                error = exception.message
+            )
+            throw exception
+        }
         tempDir.deleteRecursively()
         progressStates.remove(downloadId)
 
         repository.update(
             latest.copy(
                 finalUrl = latest.sourceUrl,
-                fileName = finalFile.name,
-                mimeType = latest.mimeType ?: inferMimeType(finalFile.name),
-                destinationUri = Uri.fromFile(finalFile).toString(),
+                fileName = savedFile.fileName,
+                mimeType = latest.mimeType ?: inferMimeType(savedFile.fileName),
+                destinationUri = savedFile.uri.toString(),
                 tempPath = null,
-                totalBytes = fileBytes,
-                downloadedBytes = fileBytes,
+                totalBytes = savedFile.bytes,
+                downloadedBytes = savedFile.bytes,
                 progress = 100,
                 speed = 0,
                 status = DownloadStatus.COMPLETED,
@@ -878,7 +898,7 @@ class YtDlpDownloader(
             option = current.qualitySelector.orEmpty(),
             attempt = "nome final",
             result = "arquivo finalizado",
-            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${finalFile.name}; tamanho=${fileBytes}; ext=${finalFile.extension}",
+            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${savedFile.fileName}; tamanho=${fileBytes}",
             durationMs = elapsedMs(finalizeStartedAt)
         )
     }
@@ -1282,28 +1302,6 @@ class YtDlpDownloader(
             .replace(Regex("[_\\-\\s]+"), "")
         if (base.isBlank()) return false
         return base !in GENERIC_OUTPUT_NAMES
-    }
-
-    private fun resolveFinalFile(preferredName: String, expectedMimeType: String?): File {
-        val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: File(context.filesDir, "downloads")
-        directory.mkdirs()
-
-        val candidateName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName), expectedMimeType)
-        var candidate = File(directory, candidateName)
-        var index = 1
-        val name = candidateName.substringBeforeLast('.', candidateName)
-        val extension = candidateName.substringAfterLast('.', missingDelimiterValue = "")
-        while (candidate.exists()) {
-            val nextName = if (extension.isBlank()) {
-                "$name ($index)"
-            } else {
-                "$name ($index).$extension"
-            }
-            candidate = File(directory, nextName)
-            index++
-        }
-        return candidate
     }
 
     private fun validateFinalFile(

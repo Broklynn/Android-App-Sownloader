@@ -1,12 +1,11 @@
 package com.androiddownload.download.http
 
 import android.content.Context
-import android.net.Uri
-import android.os.Environment
 import android.os.SystemClock
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.NetworkUtils
@@ -257,12 +256,12 @@ class HttpDownloader(
                     contentDisposition = response.header("Content-Disposition"),
                     mimeType = mimeType
                 )
-                val finalFile = resolveFinalFile(fileName, resumeOffset > 0L)
+                val displayFileName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(fileName), mimeType)
 
                 repository.update(
                     current.copy(
                         finalUrl = response.request.url.toString(),
-                        fileName = finalFile.name,
+                        fileName = displayFileName,
                         mimeType = mimeType,
                         tempPath = tempFile.absolutePath,
                         totalBytes = totalBytes,
@@ -318,7 +317,7 @@ class HttpDownloader(
                                 repository.update(
                                     current.copy(
                                         finalUrl = response.request.url.toString(),
-                                        fileName = finalFile.name,
+                                        fileName = displayFileName,
                                         mimeType = mimeType,
                                         tempPath = tempFile.absolutePath,
                                         totalBytes = totalBytes,
@@ -340,17 +339,22 @@ class HttpDownloader(
                 throwIfCancelRequested(downloadId)
                 throwIfPauseRequested(downloadId)
 
-                moveTempToFinal(tempFile, finalFile)
-                val validatedBytes = validateFinalFile(finalFile)
+                val savedFile = DownloadDestinationResolver.saveToDestination(
+                    context = context,
+                    sourceFile = tempFile,
+                    preferredName = displayFileName,
+                    mimeType = mimeType,
+                    preserveName = resumeOffset > 0L
+                )
                 repository.update(
                     current.copy(
                         finalUrl = response.request.url.toString(),
-                        fileName = finalFile.name,
+                        fileName = savedFile.fileName,
                         mimeType = mimeType,
-                        destinationUri = Uri.fromFile(finalFile).toString(),
+                        destinationUri = savedFile.uri.toString(),
                         tempPath = null,
-                        totalBytes = if (totalBytes >= 0) totalBytes else validatedBytes,
-                        downloadedBytes = validatedBytes,
+                        totalBytes = if (totalBytes >= 0) totalBytes else savedFile.bytes,
+                        downloadedBytes = savedFile.bytes,
                         progress = 100,
                         speed = 0,
                         status = DownloadStatus.COMPLETED,
@@ -423,6 +427,13 @@ class HttpDownloader(
             throw DownloadFailureException(
                 DownloadFailure(
                     message = context.getString(R.string.download_save_error),
+                    retryable = false
+                )
+            )
+        } catch (exception: DownloadDestinationResolver.DestinationException) {
+            throw DownloadFailureException(
+                DownloadFailure(
+                    message = exception.message ?: context.getString(R.string.download_save_error),
                     retryable = false
                 )
             )
@@ -513,28 +524,6 @@ class HttpDownloader(
         return File(directory, "$downloadId.part")
     }
 
-    private fun createFinalFile(fileName: String): File {
-        val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: File(context.filesDir, "downloads")
-        directory.mkdirs()
-
-        val cleanName = FileNameUtils.sanitize(fileName)
-        val name = cleanName.substringBeforeLast('.', cleanName)
-        val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
-        var candidate = File(directory, cleanName)
-        var index = 1
-        while (candidate.exists()) {
-            val nextName = if (extension.isBlank()) {
-                "$name ($index)"
-            } else {
-                "$name ($index).$extension"
-            }
-            candidate = File(directory, nextName)
-            index++
-        }
-        return candidate
-    }
-
     private fun resolveDownloadFileName(
         url: String,
         contentDisposition: String?,
@@ -547,31 +536,6 @@ class HttpDownloader(
         val fromUrl = FileNameUtils.guessFileName(url, null, null)
         val preferred = fromDisposition ?: fromUrl
         return FileNameUtils.ensureExtension(preferred, mimeType)
-    }
-
-    private fun moveTempToFinal(tempFile: File, finalFile: File) {
-        if (tempFile.renameTo(finalFile)) return
-
-        tempFile.inputStream().use { input ->
-            FileOutputStream(finalFile).use { output ->
-                input.copyTo(output)
-            }
-        }
-        tempFile.delete()
-    }
-
-    private fun validateFinalFile(finalFile: File): Long {
-        val uri = Uri.fromFile(finalFile)
-        val length = finalFile.length()
-        if (!finalFile.exists() || !finalFile.isFile || length <= 0L || uri.path.isNullOrBlank()) {
-            throw DownloadFailureException(
-                DownloadFailure(
-                    message = context.getString(R.string.download_final_file_invalid),
-                    retryable = false
-                )
-            )
-        }
-        return length
     }
 
     private suspend fun handleCanceled(downloadId: Long) {
@@ -588,32 +552,6 @@ class HttpDownloader(
         if (tempFile.exists()) {
             tempFile.delete()
         }
-    }
-
-    private fun resolveFinalFile(fileName: String, preserveName: Boolean): File {
-        val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: File(context.filesDir, "downloads")
-        directory.mkdirs()
-
-        val cleanName = FileNameUtils.sanitize(fileName)
-        if (preserveName) {
-            return File(directory, cleanName)
-        }
-
-        val name = cleanName.substringBeforeLast('.', cleanName)
-        val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
-        var candidate = File(directory, cleanName)
-        var index = 1
-        while (candidate.exists()) {
-            val nextName = if (extension.isBlank()) {
-                "$name ($index)"
-            } else {
-                "$name ($index).$extension"
-            }
-            candidate = File(directory, nextName)
-            index++
-        }
-        return candidate
     }
 
     private fun resolveTotalBytes(

@@ -65,7 +65,14 @@
     <string name="auto_update_ytdlp_enabled">Ativado</string>
     <string name="auto_update_ytdlp_disabled">Desativado</string>
     <string name="download_location_title">Local dos downloads</string>
-    <string name="download_location_help">Os arquivos baixados ficam na pasta do app.</string>
+    <string name="download_location_help">Os arquivos serão salvos em Downloads/DarkWave.</string>
+    <string name="download_location_choose">Escolher pasta</string>
+    <string name="download_location_use_default">Usar pasta padrão</string>
+    <string name="download_location_selected">Pasta escolhida: %1$s</string>
+    <string name="download_location_default">Pasta padrão: %1$s</string>
+    <string name="download_location_saved">Pasta de downloads atualizada.</string>
+    <string name="download_location_default_restored">Pasta padrão restaurada.</string>
+    <string name="download_custom_folder_access_error">Não foi possível acessar a pasta escolhida. Escolha outra pasta nas Configurações.</string>
     <string name="about_title">Sobre</string>
     <string name="about_summary">Informações básicas do app e aviso de uso responsável.</string>
     <string name="about_app_button">Sobre o app</string>

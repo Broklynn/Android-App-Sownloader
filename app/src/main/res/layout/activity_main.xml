@@ -1066,6 +1066,30 @@
                         android:textColor="@color/text_primary"
                         android:textIsSelectable="true"
                         android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/chooseDownloadLocationButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_button_secondary"
+                        android:minHeight="0dp"
+                        android:text="@string/download_location_choose"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_secondary_text"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/useDefaultDownloadLocationButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_button_secondary"
+                        android:minHeight="0dp"
+                        android:text="@string/download_location_use_default"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_secondary_text"
+                        android:textSize="13sp" />
                 </LinearLayout>
 
                 <LinearLayout

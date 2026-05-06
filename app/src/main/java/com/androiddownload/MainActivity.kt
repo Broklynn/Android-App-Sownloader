@@ -34,6 +34,7 @@ import android.text.TextWatcher
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.UrlValidator
@@ -95,6 +96,8 @@ class MainActivity : Activity() {
     private lateinit var activeDownloadSizeText: TextView
     private lateinit var downloadLocationCard: View
     private lateinit var downloadLocationText: TextView
+    private lateinit var chooseDownloadLocationButton: Button
+    private lateinit var useDefaultDownloadLocationButton: Button
     private lateinit var ytdlpUpdateStatusText: TextView
     private lateinit var updateYtDlpButton: Button
     private lateinit var autoUpdateYtDlpButton: Button
@@ -176,6 +179,8 @@ class MainActivity : Activity() {
         activeDownloadSizeText = findViewById(R.id.activeDownloadSizeText)
         downloadLocationCard = findViewById(R.id.downloadLocationCard)
         downloadLocationText = findViewById(R.id.downloadLocationText)
+        chooseDownloadLocationButton = findViewById(R.id.chooseDownloadLocationButton)
+        useDefaultDownloadLocationButton = findViewById(R.id.useDefaultDownloadLocationButton)
         ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
         updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
         autoUpdateYtDlpButton = findViewById(R.id.autoUpdateYtDlpButton)
@@ -260,6 +265,8 @@ class MainActivity : Activity() {
         }
         updateYtDlpButton.setOnClickListener { updateYtDlpManually() }
         autoUpdateYtDlpButton.setOnClickListener { toggleAutoUpdateYtDlp() }
+        chooseDownloadLocationButton.setOnClickListener { chooseDownloadLocation() }
+        useDefaultDownloadLocationButton.setOnClickListener { useDefaultDownloadLocation() }
         diagnosticsButton.setOnClickListener { showDiagnosticsDialog() }
         aboutAppButton.setOnClickListener { showAboutDialog() }
         downloadsSearchInput.addTextChangedListener(object : TextWatcher {
@@ -312,6 +319,40 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_DOWNLOAD_TREE) return
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val flags = data.flags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+            DownloadDestinationResolver.setCustomTreeUri(this, uri)
+            updateDownloadLocationText()
+            YtDlpDiagnostics.record(
+                context = this,
+                url = "app",
+                option = "destino",
+                attempt = "escolher pasta",
+                result = "pasta customizada escolhida",
+                error = DownloadDestinationResolver.summarizeUri(uri)
+            )
+            showToast(getString(R.string.download_location_saved))
+        } catch (exception: SecurityException) {
+            showToast(getString(R.string.download_custom_folder_access_error))
+            YtDlpDiagnostics.record(
+                context = this,
+                url = "app",
+                option = "destino",
+                attempt = "escolher pasta",
+                result = "falha ao persistir permissao",
+                error = exception.message
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -976,7 +1017,18 @@ class MainActivity : Activity() {
     }
 
     private fun updateDownloadLocationText() {
-        downloadLocationText.text = getPreferredDownloadDirectory().absolutePath
+        val customUri = DownloadDestinationResolver.customTreeUri(this)
+        downloadLocationText.text = if (customUri != null) {
+            getString(
+                R.string.download_location_selected,
+                DownloadDestinationResolver.summarizeUri(customUri)
+            )
+        } else {
+            getString(
+                R.string.download_location_default,
+                DownloadDestinationResolver.defaultDestinationLabel()
+            )
+        }
     }
 
     private fun showAboutDialog() {
@@ -1044,6 +1096,29 @@ class MainActivity : Activity() {
     private fun getPreferredDownloadDirectory(): File {
         return getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(filesDir, "downloads")
+    }
+
+    private fun chooseDownloadLocation() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+        }
+        startActivityForResult(intent, REQUEST_DOWNLOAD_TREE)
+    }
+
+    private fun useDefaultDownloadLocation() {
+        DownloadDestinationResolver.clearCustomTreeUri(this)
+        updateDownloadLocationText()
+        YtDlpDiagnostics.record(
+            context = this,
+            url = "app",
+            option = "destino",
+            attempt = "restaurar padrao",
+            result = "pasta padrao restaurada"
+        )
+        showToast(getString(R.string.download_location_default_restored))
     }
 
     private fun updateYtDlpManually() {
@@ -2023,6 +2098,7 @@ class MainActivity : Activity() {
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val MAX_RECENT_DOWNLOAD_URLS = 10
         private const val MAX_RECENT_DOWNLOAD_URLS_DISPLAYED = 5
+        private const val REQUEST_DOWNLOAD_TREE = 2002
         private const val ELLIPSIS = "..."
         private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
         private val VIDEO_EXTENSIONS = setOf("mp4", "webm", "m3u8")
