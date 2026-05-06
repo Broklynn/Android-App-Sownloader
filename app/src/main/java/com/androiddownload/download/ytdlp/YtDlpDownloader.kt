@@ -46,6 +46,7 @@ class YtDlpDownloader(
     private val downloadTotalRegex = Regex("""of\s+~?([\d.]+)\s*([KMGTPE]?i?B)""", RegexOption.IGNORE_CASE)
     private val downloadSpeedRegex = Regex("""at\s+([\d.]+)\s*([KMGTPE]?i?B/s)""", RegexOption.IGNORE_CASE)
     private val progressUpdateIntervalMs = 1000L
+    private val progressHeartbeatIntervalMs = 1000L
     private val executionMutex = Mutex()
 
     @Volatile
@@ -262,6 +263,7 @@ class YtDlpDownloader(
             }
 
             repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+            onProgress()
             val preparingStartedAt = System.currentTimeMillis()
             YtDlpDiagnostics.record(
                 context = context,
@@ -536,6 +538,14 @@ class YtDlpDownloader(
             result = "chamando execute",
             durationMs = elapsedMs(attemptStartedAt)
         )
+        YtDlpDiagnostics.record(
+            context = context,
+            url = current.sourceUrl,
+            option = current.qualitySelector.orEmpty(),
+            attempt = "progresso",
+            result = "throttle Room yt-dlp aplicado: 1s",
+            type = "desempenho"
+        )
 
         executeWithWatchdog(
             downloadId = downloadId,
@@ -596,17 +606,14 @@ class YtDlpDownloader(
                 val snapshot = parseProgressSnapshot(progress, etaSeconds, line, previousState)
                 val now = System.currentTimeMillis()
                 val updatedSnapshot = snapshot.copy(lastUpdatedAt = now)
-
-                if (!shouldPersistProgress(previousState, updatedSnapshot)) {
-                    if (shouldNotifyProgress(previousState, updatedSnapshot, now)) {
-                        onProgress()
-                    }
-                    return@runBlocking
-                }
-
                 if (isMeaningfulProgress(previousState, updatedSnapshot)) {
                     lastProgressAt.set(now)
                 }
+
+                if (!shouldPersistProgress(previousState, updatedSnapshot)) {
+                    return@runBlocking
+                }
+
                 progressStates[downloadId] = updatedSnapshot
 
                 val updatedDownload = latest.copy(
@@ -700,9 +707,12 @@ class YtDlpDownloader(
         current: ProgressSnapshot
     ): Boolean {
         if (previous == null) return true
+        val elapsedMs = current.lastUpdatedAt - previous.lastUpdatedAt
+        if (elapsedMs < progressUpdateIntervalMs) return false
         if (current.percent != previous.percent) return true
         if (current.totalBytes != previous.totalBytes) return true
-        return current.lastUpdatedAt - previous.lastUpdatedAt >= progressUpdateIntervalMs
+        if (current.downloadedBytes != previous.downloadedBytes) return true
+        return elapsedMs >= progressHeartbeatIntervalMs
     }
 
     private fun shouldNotifyProgress(

@@ -155,6 +155,7 @@ class HttpDownloader(
         onProgress: suspend () -> Unit
     ) {
         repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+        onProgress()
 
         val tempFile = createTempFile(downloadId)
         var resumeOffset = when {
@@ -273,10 +274,19 @@ class HttpDownloader(
                     )
                 )
                 onProgress()
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = "HTTP direto",
+                    attempt = "progresso",
+                    result = "throttle Room HTTP aplicado: 500ms/1s",
+                    type = "desempenho"
+                )
 
                 var sessionDownloadedBytes = 0L
                 val startedAt = SystemClock.elapsedRealtime()
                 var lastUpdateAt = 0L
+                var lastProgress = calculateProgress(resumeOffset, totalBytes)
 
                 body.byteStream().use { input ->
                     FileOutputStream(tempFile, resumeOffset > 0L).use { output ->
@@ -295,7 +305,16 @@ class HttpDownloader(
 
                             val downloadedBytes = resumeOffset + sessionDownloadedBytes
                             val now = SystemClock.elapsedRealtime()
-                            if (now - lastUpdateAt >= PROGRESS_INTERVAL_MS || downloadedBytes == totalBytes) {
+                            val progress = calculateProgress(downloadedBytes, totalBytes)
+                            if (shouldPersistProgress(
+                                    lastUpdateAt = lastUpdateAt,
+                                    lastProgress = lastProgress,
+                                    now = now,
+                                    progress = progress,
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes
+                                )
+                            ) {
                                 repository.update(
                                     current.copy(
                                         finalUrl = response.request.url.toString(),
@@ -304,7 +323,7 @@ class HttpDownloader(
                                         tempPath = tempFile.absolutePath,
                                         totalBytes = totalBytes,
                                         downloadedBytes = downloadedBytes,
-                                        progress = calculateProgress(downloadedBytes, totalBytes),
+                                        progress = progress,
                                         speed = calculateSpeed(sessionDownloadedBytes, startedAt, now),
                                         status = DownloadStatus.RUNNING,
                                         errorMessage = null
@@ -312,6 +331,7 @@ class HttpDownloader(
                                 )
                                 onProgress()
                                 lastUpdateAt = now
+                                lastProgress = progress
                             }
                         }
                     }
@@ -664,6 +684,21 @@ class HttpDownloader(
         return (downloadedBytes * 1000) / elapsedMs
     }
 
+    private fun shouldPersistProgress(
+        lastUpdateAt: Long,
+        lastProgress: Int,
+        now: Long,
+        progress: Int,
+        downloadedBytes: Long,
+        totalBytes: Long
+    ): Boolean {
+        if (downloadedBytes == totalBytes) return true
+        if (lastUpdateAt == 0L) return true
+        val elapsedMs = now - lastUpdateAt
+        if (progress != lastProgress && elapsedMs >= PROGRESS_MIN_INTERVAL_MS) return true
+        return elapsedMs >= PROGRESS_HEARTBEAT_INTERVAL_MS
+    }
+
     private fun isNoSpaceError(message: String): Boolean {
         return message.contains("ENOSPC", ignoreCase = true) ||
             message.contains("No space left on device", ignoreCase = true) ||
@@ -698,7 +733,8 @@ class HttpDownloader(
     }
 
     private companion object {
-        const val PROGRESS_INTERVAL_MS = 500L
+        const val PROGRESS_MIN_INTERVAL_MS = 500L
+        const val PROGRESS_HEARTBEAT_INTERVAL_MS = 1000L
         const val MAX_ATTEMPTS = 3
         val RETRY_BACKOFF_MS = longArrayOf(0L, 1000L, 3000L)
         val CONTENT_RANGE_REGEX = Regex("""bytes\s+(\d+)-(\d+|\*)/(\d+|\*)""")
