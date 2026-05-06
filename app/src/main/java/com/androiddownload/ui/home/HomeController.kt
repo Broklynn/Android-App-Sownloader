@@ -35,6 +35,10 @@ class HomeController(
         urlInput.isEnabled = !isLoading
     }
 
+    fun focusUrlInput() {
+        urlInput.requestFocus()
+    }
+
     fun clear() {
         urlInput.text.clear()
         errorText.visibility = View.GONE

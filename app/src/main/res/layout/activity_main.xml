@@ -55,9 +55,11 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <ImageView
+        <ImageButton
+            android:id="@+id/headerSearchButton"
             android:layout_width="44dp"
             android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/downloads_search_hint"
             android:padding="9dp"
             android:src="@drawable/ic_search_simple"
@@ -474,6 +476,40 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                 </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/activeDownloadActionsRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <Button
+                        android:id="@+id/activeDownloadPrimaryActionButton"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_button_primary"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_primary_text"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/activeDownloadSecondaryActionButton"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_button_secondary"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:textAllCaps="false"
+                        android:textColor="@color/button_secondary_text"
+                        android:textSize="13sp" />
+                </LinearLayout>
             </LinearLayout>
 
             <EditText
@@ -491,7 +527,8 @@
                 android:singleLine="true"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_muted"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:visibility="gone" />
 
             <HorizontalScrollView
                 android:layout_width="match_parent"

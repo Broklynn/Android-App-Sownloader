@@ -1,4 +1,5 @@
 <resources>
+    <color name="splash_background">#000000</color>
     <color name="background_main">#03060D</color>
     <color name="background_panel">#10141F</color>
     <color name="card">#171B25</color>
