@@ -18,6 +18,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -124,6 +126,7 @@ class MainActivity : Activity() {
     private var downloadsFilter = DownloadsFilter.ALL
     private var downloadsSearchQuery: String = ""
     private var currentScreen = PrimaryScreen.HOME
+    private var backInvokedCallback: OnBackInvokedCallback? = null
     private val detectedMediaLock = Any()
     private val detectedMediaCandidates = LinkedHashMap<String, MediaCandidate>()
     private val settingsPreferences: SharedPreferences
@@ -195,6 +198,7 @@ class MainActivity : Activity() {
         browserErrorText = findViewById(R.id.browserErrorText)
         browserWebView = findViewById(R.id.browserWebView)
         setupBrowserWebView()
+        setupSystemBackHandler()
 
         adapter = DownloadsAdapter(
             context = this,
@@ -311,6 +315,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        unregisterSystemBackHandler()
         browserWebView.apply {
             stopLoading()
             loadUrl("about:blank")
@@ -904,6 +909,40 @@ class MainActivity : Activity() {
             PrimaryScreen.DOWNLOADS -> showDownloads()
             PrimaryScreen.BROWSER -> showBrowser()
         }
+    }
+
+    private fun setupSystemBackHandler() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val callback = OnBackInvokedCallback {
+            if (!handleBackNavigation()) {
+                finish()
+            }
+        }
+        onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            callback
+        )
+        backInvokedCallback = callback
+    }
+
+    private fun unregisterSystemBackHandler() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val callback = backInvokedCallback ?: return
+        onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
+        backInvokedCallback = null
+    }
+
+    private fun handleBackNavigation(): Boolean {
+        if (settingsContainer.visibility == View.VISIBLE) {
+            closeSettingsOverlay()
+            return true
+        }
+        if (browserContainer.visibility == View.VISIBLE && browserWebView.canGoBack()) {
+            browserWebView.goBack()
+            updateBrowserNavigationButtons()
+            return true
+        }
+        return false
     }
 
     private fun DownloadEntity.matchesDownloadsFilter(filter: DownloadsFilter): Boolean {
@@ -1792,12 +1831,7 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if (settingsContainer.visibility == View.VISIBLE) {
-            closeSettingsOverlay()
-            return
-        }
-        if (browserContainer.visibility == View.VISIBLE && browserWebView.canGoBack()) {
-            browserWebView.goBack()
+        if (handleBackNavigation()) {
             return
         }
         super.onBackPressed()

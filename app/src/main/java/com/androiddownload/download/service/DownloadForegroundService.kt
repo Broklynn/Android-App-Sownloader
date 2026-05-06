@@ -21,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class DownloadForegroundService : Service() {
@@ -77,7 +78,12 @@ class DownloadForegroundService : Service() {
 
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                val download = app.container.repository.getById(downloadId) ?: return@launch
+                val original = app.container.repository.getById(downloadId) ?: return@launch
+                val download = if (mode == DownloadMode.RETRY) {
+                    prepareManualRetry(original)
+                } else {
+                    original
+                }
                 if (DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
                     app.container.downloader.download(downloadId, mode) {
                         app.container.repository.getById(downloadId)?.let { current ->
@@ -97,6 +103,19 @@ class DownloadForegroundService : Service() {
             } finally {
                 withContext(NonCancellable) {
                     runningJobs.remove(downloadId)
+                    if (mode == DownloadMode.RETRY) {
+                        app.container.repository.getById(downloadId)?.let { finished ->
+                            recordManualRetry(
+                                download = finished,
+                                kind = if (DownloadSourceClassifier.shouldUseHttpDownloader(finished.sourceUrl)) {
+                                    "HTTP direto"
+                                } else {
+                                    "yt-dlp"
+                                },
+                                result = "retry manual finalizado: ${finished.status.name.lowercase()}"
+                            )
+                        }
+                    }
                     finishIfIdle(downloadId)
                 }
             }
@@ -120,6 +139,114 @@ class DownloadForegroundService : Service() {
             notificationStates.remove(downloadId)
             finishIfIdle(downloadId)
         }
+    }
+
+    private suspend fun prepareManualRetry(download: DownloadEntity): DownloadEntity {
+        val isHttp = DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)
+        return if (isHttp) {
+            prepareHttpManualRetry(download)
+        } else {
+            prepareYtDlpManualRetry(download)
+        }
+    }
+
+    private suspend fun prepareHttpManualRetry(download: DownloadEntity): DownloadEntity {
+        val tempFile = File(cacheDir, "downloads/${download.id}.part")
+        val canReuseTemp = tempFile.isFile && tempFile.length() > 0L && download.downloadedBytes > 0L
+        val downloadedBytes = if (canReuseTemp) {
+            minOf(download.downloadedBytes, tempFile.length())
+        } else {
+            cleanupTempPath(download.tempPath)
+            cleanupTempPath(tempFile.absolutePath)
+            0L
+        }
+        val totalBytes = if (canReuseTemp && download.totalBytes > downloadedBytes) {
+            download.totalBytes
+        } else {
+            -1L
+        }
+        if (canReuseTemp && download.tempPath != tempFile.absolutePath) {
+            cleanupTempPath(download.tempPath)
+        }
+        val retryDownload = download.copy(
+            destinationUri = null,
+            tempPath = if (canReuseTemp) tempFile.absolutePath else null,
+            totalBytes = totalBytes,
+            downloadedBytes = downloadedBytes,
+            progress = calculateProgress(downloadedBytes, totalBytes),
+            speed = 0,
+            status = DownloadStatus.QUEUED,
+            errorMessage = null
+        )
+        app.container.repository.update(retryDownload)
+        recordManualRetry(
+            download = retryDownload,
+            kind = "HTTP direto",
+            result = if (canReuseTemp) {
+                "retry manual solicitado; reaproveitou tempPath"
+            } else {
+                "retry manual solicitado; reiniciou do zero"
+            }
+        )
+        notifyProgressIfNeeded(retryDownload, force = true)
+        return retryDownload
+    }
+
+    private suspend fun prepareYtDlpManualRetry(download: DownloadEntity): DownloadEntity {
+        val tempDir = File(cacheDir, "ytdlp/${download.id}")
+        val cleanedOldTemp = cleanupTempPath(download.tempPath) || cleanupTempPath(tempDir.absolutePath)
+        val retryDownload = download.copy(
+            destinationUri = null,
+            tempPath = null,
+            totalBytes = -1,
+            downloadedBytes = 0,
+            progress = 0,
+            speed = 0,
+            status = DownloadStatus.QUEUED,
+            errorMessage = null
+        )
+        app.container.repository.update(retryDownload)
+        recordManualRetry(
+            download = retryDownload,
+            kind = "yt-dlp",
+            result = if (cleanedOldTemp) {
+                "retry manual solicitado; limpou temp antigo; reiniciou do zero"
+            } else {
+                "retry manual solicitado; reiniciou do zero"
+            }
+        )
+        notifyProgressIfNeeded(retryDownload, force = true)
+        return retryDownload
+    }
+
+    private fun cleanupTempPath(path: String?): Boolean {
+        val cleanPath = path?.trim().orEmpty()
+        if (cleanPath.isBlank()) return false
+        return runCatching {
+            val file = File(cleanPath)
+            if (!file.exists()) return@runCatching false
+            if (file.isDirectory) file.deleteRecursively() else file.delete()
+        }.getOrDefault(false)
+    }
+
+    private fun calculateProgress(downloadedBytes: Long, totalBytes: Long): Int {
+        if (totalBytes <= 0L) return 0
+        return ((downloadedBytes * 100) / totalBytes).coerceIn(0, 100).toInt()
+    }
+
+    private fun recordManualRetry(
+        download: DownloadEntity,
+        kind: String,
+        result: String
+    ) {
+        YtDlpDiagnostics.record(
+            context = this,
+            url = download.sourceUrl,
+            option = kind,
+            attempt = "retry manual",
+            result = result,
+            type = "retry"
+        )
     }
 
     private fun pauseDownload(downloadId: Long) {
