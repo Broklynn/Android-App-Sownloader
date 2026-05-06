@@ -59,6 +59,7 @@ class DownloadRepository(
             return
         }
 
+        deleteTempPath(current.tempPath)
         dao.update(
             current.copy(
                 status = DownloadStatus.CANCELED,

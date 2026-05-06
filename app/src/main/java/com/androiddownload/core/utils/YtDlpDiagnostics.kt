@@ -42,14 +42,22 @@ object YtDlpDiagnostics {
         }.getOrDefault(JSONArray())
         val updated = JSONArray().apply {
             put(event)
-            for (index in 0 until minOf(current.length(), MAX_EVENTS - 1)) {
-                put(current.getJSONObject(index))
+            val cutoff = System.currentTimeMillis() - MAX_EVENT_AGE_MS
+            var kept = 1
+            for (index in 0 until current.length()) {
+                if (kept >= MAX_EVENTS) break
+                val currentEvent = current.optJSONObject(index) ?: continue
+                val time = currentEvent.optLong("time", 0L)
+                if (time <= 0L || time < cutoff) continue
+                put(currentEvent)
+                kept++
             }
         }
         prefs.edit().putString(KEY_EVENTS, updated.toString()).apply()
     }
 
     fun formatted(context: Context): String {
+        pruneOldEvents(context)
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val events = runCatching {
             JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
@@ -83,6 +91,27 @@ object YtDlpDiagnostics {
             .apply()
     }
 
+    fun pruneOldEvents(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val events = runCatching {
+            JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
+        }.getOrDefault(JSONArray())
+        if (events.length() == 0) return
+
+        val cutoff = System.currentTimeMillis() - MAX_EVENT_AGE_MS
+        val pruned = JSONArray()
+        for (index in 0 until events.length()) {
+            if (pruned.length() >= MAX_EVENTS) break
+            val event = events.optJSONObject(index) ?: continue
+            val time = event.optLong("time", 0L)
+            if (time <= 0L || time < cutoff) continue
+            pruned.put(event)
+        }
+        if (pruned.length() != events.length()) {
+            prefs.edit().putString(KEY_EVENTS, pruned.toString()).apply()
+        }
+    }
+
     private fun summarizeUrl(url: String): String {
         val uri = runCatching { Uri.parse(url) }.getOrNull()
         val host = uri?.host?.lowercase(Locale.US).orEmpty()
@@ -110,4 +139,6 @@ object YtDlpDiagnostics {
             "${durationMs}ms"
         }
     }
+
+    private const val MAX_EVENT_AGE_MS = 7L * 24L * 60L * 60L * 1000L
 }

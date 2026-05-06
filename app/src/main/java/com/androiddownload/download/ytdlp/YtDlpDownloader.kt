@@ -14,7 +14,6 @@ import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
-import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.yausername.youtubedl_android.mapper.VideoInfo
 import kotlinx.coroutines.Dispatchers
@@ -73,8 +72,45 @@ class YtDlpDownloader(
             if (initialized) return
             val startedAt = System.currentTimeMillis()
             try {
+                val ffmpegStartedAt = System.currentTimeMillis()
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = "app",
+                    option = "init",
+                    attempt = "ffmpeg init",
+                    result = "inicio",
+                    type = "startup"
+                )
                 FFmpeg.getInstance().init(context.applicationContext)
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = "app",
+                    option = "init",
+                    attempt = "ffmpeg init",
+                    result = "finalizado",
+                    durationMs = elapsedMs(ffmpegStartedAt),
+                    type = "startup"
+                )
+
+                val ytDlpStartedAt = System.currentTimeMillis()
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = "app",
+                    option = "init",
+                    attempt = "yt-dlp init",
+                    result = "inicio",
+                    type = "startup"
+                )
                 YoutubeDL.getInstance().init(context.applicationContext)
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = "app",
+                    option = "init",
+                    attempt = "yt-dlp init",
+                    result = "finalizado",
+                    durationMs = elapsedMs(ytDlpStartedAt),
+                    type = "startup"
+                )
                 initialized = true
                 YtDlpDiagnostics.record(
                     context = context,
@@ -82,9 +118,10 @@ class YtDlpDownloader(
                     option = "init",
                     attempt = "inicializacao",
                     result = "yt-dlp/ffmpeg prontos",
-                    durationMs = elapsedMs(startedAt)
+                    durationMs = elapsedMs(startedAt),
+                    type = "startup"
                 )
-            } catch (_: YoutubeDLException) {
+            } catch (exception: Exception) {
                 initialized = false
                 YtDlpDiagnostics.record(
                     context = context,
@@ -92,6 +129,8 @@ class YtDlpDownloader(
                     option = "init",
                     attempt = "inicializacao",
                     result = "falha init",
+                    error = exception.message,
+                    type = "startup",
                     durationMs = elapsedMs(startedAt)
                 )
             }
