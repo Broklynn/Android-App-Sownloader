@@ -206,14 +206,18 @@
     <string name="player_placeholder">DarkWave</string>
     <string name="player_nothing_selected">Nenhum arquivo selecionado</string>
     <string name="player_select_file">Escolha um download para reproduzir.</string>
+    <string name="player_status_stopped">Parado</string>
+    <string name="player_status_playing">Tocando</string>
+    <string name="player_status_paused">Pausado</string>
     <string name="player_time_zero">0:00</string>
     <string name="player_previous">Anterior</string>
     <string name="player_play">Tocar</string>
     <string name="player_pause">Pausar</string>
     <string name="player_next">Pr&#243;xima</string>
     <string name="player_watch">Assistir</string>
+    <string name="player_fullscreen">Tela cheia</string>
     <string name="player_downloaded_files">Arquivos baixados</string>
-    <string name="player_empty_music">Nenhuma m&#250;sica baixada ainda.</string>
-    <string name="player_empty_video">Nenhum v&#237;deo baixado ainda.</string>
+    <string name="player_empty_music">Nenhuma m&#250;sica baixada ainda.&#10;Baixe um MP3 para ouvir aqui.</string>
+    <string name="player_empty_video">Nenhum v&#237;deo baixado ainda.&#10;Baixe um MP4 para assistir aqui.</string>
     <string name="player_playback_error">N&#227;o foi poss&#237;vel reproduzir este arquivo.</string>
 </resources>

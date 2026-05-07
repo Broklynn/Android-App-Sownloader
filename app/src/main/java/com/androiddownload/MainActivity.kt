@@ -138,12 +138,14 @@ class MainActivity : Activity() {
     private lateinit var playerVideoView: VideoView
     private lateinit var playerNowPlayingTitle: TextView
     private lateinit var playerNowPlayingSubtitle: TextView
+    private lateinit var playerNowPlayingMetaText: TextView
     private lateinit var playerSeekBar: SeekBar
     private lateinit var playerCurrentTimeText: TextView
     private lateinit var playerDurationText: TextView
     private lateinit var playerPreviousButton: Button
     private lateinit var playerPlayPauseButton: Button
     private lateinit var playerNextButton: Button
+    private lateinit var playerFullscreenButton: Button
     private lateinit var playerList: LinearLayout
     private lateinit var playerEmptyText: TextView
     private val playbackHandler = Handler(Looper.getMainLooper())
@@ -152,6 +154,7 @@ class MainActivity : Activity() {
     private var playerItems: List<DownloadEntity> = emptyList()
     private var currentPlayerIndex = -1
     private var audioPrepared = false
+    private var videoPrepared = false
     private var userSeeking = false
     private var browserPageLoading = false
     private var hasActiveDownloads = false
@@ -245,12 +248,14 @@ class MainActivity : Activity() {
         playerVideoView = findViewById(R.id.playerVideoView)
         playerNowPlayingTitle = findViewById(R.id.playerNowPlayingTitle)
         playerNowPlayingSubtitle = findViewById(R.id.playerNowPlayingSubtitle)
+        playerNowPlayingMetaText = findViewById(R.id.playerNowPlayingMetaText)
         playerSeekBar = findViewById(R.id.playerSeekBar)
         playerCurrentTimeText = findViewById(R.id.playerCurrentTimeText)
         playerDurationText = findViewById(R.id.playerDurationText)
         playerPreviousButton = findViewById(R.id.playerPreviousButton)
         playerPlayPauseButton = findViewById(R.id.playerPlayPauseButton)
         playerNextButton = findViewById(R.id.playerNextButton)
+        playerFullscreenButton = findViewById(R.id.playerFullscreenButton)
         playerList = findViewById(R.id.playerList)
         playerEmptyText = findViewById(R.id.playerEmptyText)
         setupBrowserWebView()
@@ -423,6 +428,11 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    override fun onPause() {
+        pauseCurrentPlayback()
+        super.onPause()
+    }
+
     override fun onStop() {
         pauseCurrentPlayback()
         super.onStop()
@@ -514,6 +524,7 @@ class MainActivity : Activity() {
         playerPlayPauseButton.setOnClickListener { togglePlayback() }
         playerPreviousButton.setOnClickListener { playAdjacent(offset = -1) }
         playerNextButton.setOnClickListener { playAdjacent(offset = 1) }
+        playerFullscreenButton.setOnClickListener { openCurrentVideoFullscreen() }
         playerSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
@@ -529,7 +540,7 @@ class MainActivity : Activity() {
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val duration = currentDuration()
-                if (duration > 0) {
+                if (duration > 0 && isCurrentPlaybackPrepared()) {
                     seekCurrentPlayback(progressToPosition(seekBar?.progress ?: 0, duration))
                 }
                 userSeeking = false
@@ -541,6 +552,7 @@ class MainActivity : Activity() {
             showPlaybackErrorAndMaybeSkip()
             true
         }
+        updateNowPlayingInfo()
         renderPlayerList()
     }
 
@@ -566,6 +578,11 @@ class MainActivity : Activity() {
             button.setTextColor(getColor(if (selected) R.color.brand else R.color.text_muted))
         }
         playerVideoView.visibility = if (playerCategory == PlayerCategory.VIDEO && currentPlayerIndex >= 0) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        playerFullscreenButton.visibility = if (playerCategory == PlayerCategory.VIDEO && currentPlayerIndex >= 0) {
             View.VISIBLE
         } else {
             View.GONE
@@ -691,7 +708,7 @@ class MainActivity : Activity() {
         stopCurrentPlayback(clearSelection = false)
         currentPlayerIndex = index
         playerNowPlayingTitle.text = download.fileName
-        playerNowPlayingSubtitle.text = formatLabelForDetails(download)
+        updateNowPlayingInfo(download)
         playerSeekBar.progress = 0
         playerCurrentTimeText.text = getString(R.string.player_time_zero)
         playerDurationText.text = getString(R.string.player_time_zero)
@@ -706,6 +723,7 @@ class MainActivity : Activity() {
     }
 
     private fun startAudioPlayback(uri: Uri, index: Int, skipBudget: Int) {
+        stopVideoPlayback()
         playerArtworkPlaceholder.visibility = View.VISIBLE
         playerVideoView.visibility = View.GONE
         audioPrepared = false
@@ -714,6 +732,7 @@ class MainActivity : Activity() {
                 audioPrepared = true
                 player.start()
                 updatePlaybackButtons()
+                updateNowPlayingInfo()
                 updatePlaybackProgress()
             }
             setOnCompletionListener { handlePlaybackCompleted() }
@@ -733,12 +752,16 @@ class MainActivity : Activity() {
     }
 
     private fun startVideoPlayback(uri: Uri, index: Int, skipBudget: Int) {
+        stopAudioPlayback()
         playerArtworkPlaceholder.visibility = View.GONE
         playerVideoView.visibility = View.VISIBLE
+        videoPrepared = false
         try {
             playerVideoView.setOnPreparedListener {
+                videoPrepared = true
                 playerVideoView.start()
                 updatePlaybackButtons()
+                updateNowPlayingInfo()
                 updatePlaybackProgress()
             }
             playerVideoView.setVideoURI(uri)
@@ -785,36 +808,51 @@ class MainActivity : Activity() {
         if (playerVideoView.isPlaying) {
             playerVideoView.pause()
         }
+        playbackHandler.removeCallbacksAndMessages(null)
         updatePlaybackButtons()
+        updateNowPlayingInfo()
     }
 
     private fun resumeCurrentPlayback() {
         if (playerCategory == PlayerCategory.MUSIC) {
             if (audioPrepared) audioPlayer?.start()
         } else {
-            playerVideoView.start()
+            if (videoPrepared) playerVideoView.start()
         }
         updatePlaybackButtons()
+        updateNowPlayingInfo()
         updatePlaybackProgress()
     }
 
     private fun stopCurrentPlayback(clearSelection: Boolean) {
         playbackHandler.removeCallbacksAndMessages(null)
-        audioPlayer?.release()
-        audioPlayer = null
-        audioPrepared = false
-        playerVideoView.stopPlayback()
+        stopAudioPlayback()
+        stopVideoPlayback()
         if (clearSelection) {
             currentPlayerIndex = -1
             playerNowPlayingTitle.text = getString(R.string.player_nothing_selected)
             playerNowPlayingSubtitle.text = getString(R.string.player_select_file)
+            playerNowPlayingMetaText.text = getString(R.string.player_status_stopped)
             playerSeekBar.progress = 0
             playerCurrentTimeText.text = getString(R.string.player_time_zero)
             playerDurationText.text = getString(R.string.player_time_zero)
             playerArtworkPlaceholder.visibility = View.VISIBLE
             playerVideoView.visibility = View.GONE
+            playerFullscreenButton.visibility = View.GONE
         }
+        updateNowPlayingInfo()
         updatePlaybackButtons()
+    }
+
+    private fun stopAudioPlayback() {
+        runCatching { audioPlayer?.release() }
+        audioPlayer = null
+        audioPrepared = false
+    }
+
+    private fun stopVideoPlayback() {
+        runCatching { playerVideoView.stopPlayback() }
+        videoPrepared = false
     }
 
     private fun releasePlayer() {
@@ -839,11 +877,17 @@ class MainActivity : Activity() {
         } else {
             stopCurrentPlayback(clearSelection = false)
             playerPlayPauseButton.text = getString(R.string.player_play)
+            updateNowPlayingInfo()
         }
     }
 
     private fun updatePlaybackProgress() {
         playbackHandler.removeCallbacksAndMessages(null)
+        if (currentPlayerIndex < 0 || !isCurrentPlaybackPrepared()) {
+            updatePlaybackButtons()
+            updateNowPlayingInfo()
+            return
+        }
         val duration = currentDuration()
         val position = currentPosition()
         if (duration > 0) {
@@ -854,6 +898,7 @@ class MainActivity : Activity() {
             playerDurationText.text = formatPlaybackTime(duration)
         }
         updatePlaybackButtons()
+        updateNowPlayingInfo()
         if (isCurrentPlaybackRunning()) {
             playbackHandler.postDelayed({ updatePlaybackProgress() }, 500L)
         }
@@ -871,6 +916,39 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun updateNowPlayingInfo(download: DownloadEntity? = currentPlayingDownload()) {
+        val current = download
+        if (current == null || currentPlayerIndex < 0) {
+            playerNowPlayingTitle.text = getString(R.string.player_nothing_selected)
+            playerNowPlayingSubtitle.text = getString(R.string.player_select_file)
+            playerNowPlayingMetaText.text = getString(R.string.player_status_stopped)
+            return
+        }
+
+        val formatLabel = formatLabelForDetails(current)
+        playerNowPlayingTitle.text = current.fileName
+        playerNowPlayingSubtitle.text = "${playerTypeLabel(current)} - $formatLabel"
+        playerNowPlayingMetaText.text = "${playbackStatusLabel()} - ${playerCurrentTimeText.text}/${playerDurationText.text}"
+    }
+
+    private fun playbackStatusLabel(): String {
+        return when {
+            currentPlayerIndex < 0 -> getString(R.string.player_status_stopped)
+            isCurrentPlaybackRunning() -> getString(R.string.player_status_playing)
+            isCurrentPlaybackPrepared() -> getString(R.string.player_status_paused)
+            else -> getString(R.string.player_status_stopped)
+        }
+    }
+
+    private fun playerTypeLabel(download: DownloadEntity): String {
+        val label = formatLabelForDetails(download).uppercase(Locale.US)
+        return when {
+            "MP3" in label || download.finalFileExtension().equals("mp3", ignoreCase = true) -> "MP3"
+            "MP4" in label || download.finalFileExtension().equals("mp4", ignoreCase = true) -> "MP4"
+            else -> downloadTypeBadgeLabel(download, label)
+        }
+    }
+
     private fun currentPlayingDownload(): DownloadEntity? {
         return playerItems.getOrNull(currentPlayerIndex)
     }
@@ -883,12 +961,20 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun isCurrentPlaybackPrepared(): Boolean {
+        return if (playerCategory == PlayerCategory.MUSIC) {
+            audioPrepared && audioPlayer != null
+        } else {
+            videoPrepared
+        }
+    }
+
     private fun currentDuration(): Int {
         return runCatching {
             if (playerCategory == PlayerCategory.MUSIC) {
                 if (audioPrepared) audioPlayer?.duration ?: 0 else 0
             } else {
-                playerVideoView.duration.takeIf { it > 0 } ?: 0
+                if (videoPrepared) playerVideoView.duration.takeIf { it > 0 } ?: 0 else 0
             }
         }.getOrDefault(0)
     }
@@ -898,7 +984,7 @@ class MainActivity : Activity() {
             if (playerCategory == PlayerCategory.MUSIC) {
                 if (audioPrepared) audioPlayer?.currentPosition ?: 0 else 0
             } else {
-                playerVideoView.currentPosition
+                if (videoPrepared) playerVideoView.currentPosition else 0
             }
         }.getOrDefault(0)
     }
@@ -908,8 +994,42 @@ class MainActivity : Activity() {
             if (playerCategory == PlayerCategory.MUSIC) {
                 if (audioPrepared) audioPlayer?.seekTo(positionMs)
             } else {
-                playerVideoView.seekTo(positionMs)
+                if (videoPrepared) playerVideoView.seekTo(positionMs)
             }
+        }
+    }
+
+    private fun openCurrentVideoFullscreen() {
+        if (playerCategory != PlayerCategory.VIDEO) return
+        val download = currentPlayingDownload() ?: return
+        val openUri = try {
+            resolveOpenUri(download)
+        } catch (exception: IllegalArgumentException) {
+            null
+        }
+
+        if (openUri == null) {
+            showToast(getString(R.string.player_playback_error))
+            return
+        }
+
+        val viewIntent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(openUri, "video/mp4")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        viewIntent.clipData = ClipData.newUri(contentResolver, download.fileName, openUri)
+
+        if (packageManager.queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY).isEmpty()) {
+            showToast(getString(R.string.download_no_app_found))
+            return
+        }
+
+        pauseCurrentPlayback()
+        try {
+            startActivity(Intent.createChooser(viewIntent, getString(R.string.open_file_chooser)))
+        } catch (exception: ActivityNotFoundException) {
+            showToast(getString(R.string.download_no_app_found))
+        } catch (exception: RuntimeException) {
+            showToast(getString(R.string.player_playback_error))
         }
     }
 
