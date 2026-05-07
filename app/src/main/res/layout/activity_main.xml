@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_app_background"
-    android:orientation="vertical"
-    android:paddingStart="16dp"
-    android:paddingTop="18dp"
-    android:paddingEnd="16dp"
-    android:paddingBottom="12dp">
+    android:background="@drawable/bg_app_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="12dp">
 
     <LinearLayout
         android:id="@+id/appHeader"
@@ -944,6 +948,7 @@
                     android:padding="14dp">
 
                     <FrameLayout
+                        android:id="@+id/playerVideoFrame"
                         android:layout_width="match_parent"
                         android:layout_height="190dp"
                         android:background="@drawable/bg_webview_frame"
@@ -964,6 +969,19 @@
                             android:id="@+id/playerVideoView"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
+                            android:visibility="gone" />
+
+                        <ImageButton
+                            android:id="@+id/playerFullscreenButton"
+                            android:layout_width="42dp"
+                            android:layout_height="42dp"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="10dp"
+                            android:background="@drawable/bg_overlay_icon_button"
+                            android:contentDescription="@string/player_fullscreen"
+                            android:padding="10dp"
+                            android:src="@drawable/ic_fullscreen_simple"
+                            android:tint="@color/text_primary"
                             android:visibility="gone" />
                     </FrameLayout>
 
@@ -1087,19 +1105,6 @@
                             android:textColor="@color/button_secondary_text"
                             android:textSize="13sp" />
                     </LinearLayout>
-
-                    <Button
-                        android:id="@+id/playerFullscreenButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="44dp"
-                        android:layout_marginTop="10dp"
-                        android:background="@drawable/bg_button_secondary"
-                        android:minHeight="0dp"
-                        android:text="@string/player_fullscreen"
-                        android:textAllCaps="false"
-                        android:textColor="@color/button_secondary_text"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
                 </LinearLayout>
 
                 <TextView
@@ -1524,4 +1529,127 @@
             android:textColor="@color/tab_text"
             android:textSize="11sp" />
     </LinearLayout>
-</LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/videoFullscreenOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:visibility="gone">
+
+        <com.androiddownload.ui.player.AspectRatioVideoView
+            android:id="@+id/videoFullscreenView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center" />
+
+        <TextView
+            android:id="@+id/videoFullscreenSeekFeedbackText"
+            android:layout_width="104dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_overlay_icon_button"
+            android:gravity="center"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/videoFullscreenControls"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_video_controls_overlay"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/videoFullscreenCloseButton"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/bg_overlay_icon_button"
+                    android:contentDescription="@string/player_fullscreen_close"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_close_simple"
+                    android:tint="@color/text_primary" />
+
+                <TextView
+                    android:id="@+id/videoFullscreenTitleText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/videoFullscreenPlayPauseButton"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_overlay_icon_button"
+                    android:contentDescription="@string/player_play"
+                    android:padding="16dp"
+                    android:src="@drawable/ic_play_simple"
+                    android:tint="@color/text_primary" />
+            </FrameLayout>
+
+            <SeekBar
+                android:id="@+id/videoFullscreenSeekBar"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:max="1000"
+                android:progress="0"
+                android:progressBackgroundTint="@color/line"
+                android:progressTint="@color/brand"
+                android:thumbTint="@color/accent_secondary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/videoFullscreenCurrentTimeText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/player_time_zero"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/videoFullscreenDurationText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="@string/player_time_zero"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
