@@ -6,6 +6,7 @@
     <string name="browser">Navegador</string>
     <string name="nav_downloads">Baixados</string>
     <string name="nav_browser">Navegar</string>
+    <string name="nav_player">Player</string>
     <string name="settings_tab">Config</string>
     <string name="settings_title">Configurações</string>
     <string name="url_hint">Cole uma URL ou link de vídeo</string>
@@ -198,4 +199,21 @@
     <string name="download_detail_final_uri">URI final</string>
     <string name="download_detail_created_at">Criado em</string>
     <string name="download_detail_updated_at">Atualizado em</string>
+    <string name="player_title">Player</string>
+    <string name="player_subtitle">Arquivos baixados</string>
+    <string name="player_music_tab">M&#250;sicas</string>
+    <string name="player_video_tab">V&#237;deos</string>
+    <string name="player_placeholder">DarkWave</string>
+    <string name="player_nothing_selected">Nenhum arquivo selecionado</string>
+    <string name="player_select_file">Escolha um download para reproduzir.</string>
+    <string name="player_time_zero">0:00</string>
+    <string name="player_previous">Anterior</string>
+    <string name="player_play">Tocar</string>
+    <string name="player_pause">Pausar</string>
+    <string name="player_next">Pr&#243;xima</string>
+    <string name="player_watch">Assistir</string>
+    <string name="player_downloaded_files">Arquivos baixados</string>
+    <string name="player_empty_music">Nenhuma m&#250;sica baixada ainda.</string>
+    <string name="player_empty_video">Nenhum v&#237;deo baixado ainda.</string>
+    <string name="player_playback_error">N&#227;o foi poss&#237;vel reproduzir este arquivo.</string>
 </resources>
