@@ -30,7 +30,6 @@ import android.window.OnBackInvokedDispatcher
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.ListView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
@@ -38,8 +37,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
 import android.widget.VideoView
-import android.text.Editable
-import android.text.TextWatcher
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -50,7 +47,8 @@ import com.androiddownload.core.utils.UrlValidator
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
-import com.androiddownload.ui.downloads.DownloadsAdapter
+import com.androiddownload.ui.downloads.DownloadsController
+import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.player.AspectRatioVideoView
 import kotlinx.coroutines.CoroutineScope
@@ -85,30 +83,12 @@ class MainActivity : Activity() {
     private lateinit var settingsContainer: View
     private lateinit var settingsMenuButton: ImageButton
     private lateinit var headerSearchButton: ImageButton
-    private lateinit var emptyDownloadsText: TextView
     private lateinit var clearFinishedButton: Button
-    private lateinit var downloadsSearchInput: EditText
     private lateinit var recentDownloadsSection: LinearLayout
     private lateinit var clearRecentButton: Button
     private lateinit var recentDownloadsList: LinearLayout
     private lateinit var homeRecentDownloadsSection: LinearLayout
     private lateinit var homeRecentDownloadsList: LinearLayout
-    private lateinit var downloadsFilterAllButton: Button
-    private lateinit var downloadsFilterActiveButton: Button
-    private lateinit var downloadsFilterPausedButton: Button
-    private lateinit var downloadsFilterCompletedButton: Button
-    private lateinit var downloadsFilterFailedButton: Button
-    private lateinit var activeDownloadCard: View
-    private lateinit var activeDownloadTitleText: TextView
-    private lateinit var activeDownloadNameText: TextView
-    private lateinit var activeDownloadFormatText: TextView
-    private lateinit var activeDownloadProgressText: TextView
-    private lateinit var activeDownloadProgressBar: ProgressBar
-    private lateinit var activeDownloadSpeedText: TextView
-    private lateinit var activeDownloadSizeText: TextView
-    private lateinit var activeDownloadActionsRow: View
-    private lateinit var activeDownloadPrimaryActionButton: Button
-    private lateinit var activeDownloadSecondaryActionButton: Button
     private lateinit var downloadLocationCard: View
     private lateinit var downloadLocationText: TextView
     private lateinit var chooseDownloadLocationButton: Button
@@ -120,7 +100,7 @@ class MainActivity : Activity() {
     private lateinit var aboutAppButton: Button
     private lateinit var settingsCloseButton: Button
     private lateinit var homeController: HomeController
-    private lateinit var adapter: DownloadsAdapter
+    private lateinit var downloadsController: DownloadsController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
     private lateinit var browserTabButton: Button
@@ -188,8 +168,6 @@ class MainActivity : Activity() {
     private var ytDlpUpdateInProgress = false
     private var ytDlpUpdateMessage: String? = null
     private var currentDownloads: List<DownloadEntity> = emptyList()
-    private var downloadsFilter = DownloadsFilter.ALL
-    private var downloadsSearchQuery: String = ""
     private var currentScreen = PrimaryScreen.HOME
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private val detectedMediaLock = Any()
@@ -220,30 +198,12 @@ class MainActivity : Activity() {
         settingsContainer = findViewById(R.id.settingsContainer)
         settingsMenuButton = findViewById(R.id.settingsMenuButton)
         headerSearchButton = findViewById(R.id.headerSearchButton)
-        emptyDownloadsText = findViewById(R.id.emptyDownloadsText)
         clearFinishedButton = findViewById(R.id.clearFinishedButton)
-        downloadsSearchInput = findViewById(R.id.downloadsSearchInput)
         recentDownloadsSection = findViewById(R.id.recentDownloadsSection)
         clearRecentButton = findViewById(R.id.clearRecentButton)
         recentDownloadsList = findViewById(R.id.recentDownloadsList)
         homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
         homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
-        downloadsFilterAllButton = findViewById(R.id.downloadsFilterAllButton)
-        downloadsFilterActiveButton = findViewById(R.id.downloadsFilterActiveButton)
-        downloadsFilterPausedButton = findViewById(R.id.downloadsFilterPausedButton)
-        downloadsFilterCompletedButton = findViewById(R.id.downloadsFilterCompletedButton)
-        downloadsFilterFailedButton = findViewById(R.id.downloadsFilterFailedButton)
-        activeDownloadCard = findViewById(R.id.activeDownloadCard)
-        activeDownloadTitleText = findViewById(R.id.activeDownloadTitleText)
-        activeDownloadNameText = findViewById(R.id.activeDownloadNameText)
-        activeDownloadFormatText = findViewById(R.id.activeDownloadFormatText)
-        activeDownloadProgressText = findViewById(R.id.activeDownloadProgressText)
-        activeDownloadProgressBar = findViewById(R.id.activeDownloadProgressBar)
-        activeDownloadSpeedText = findViewById(R.id.activeDownloadSpeedText)
-        activeDownloadSizeText = findViewById(R.id.activeDownloadSizeText)
-        activeDownloadActionsRow = findViewById(R.id.activeDownloadActionsRow)
-        activeDownloadPrimaryActionButton = findViewById(R.id.activeDownloadPrimaryActionButton)
-        activeDownloadSecondaryActionButton = findViewById(R.id.activeDownloadSecondaryActionButton)
         downloadLocationCard = findViewById(R.id.downloadLocationCard)
         downloadLocationText = findViewById(R.id.downloadLocationText)
         chooseDownloadLocationButton = findViewById(R.id.chooseDownloadLocationButton)
@@ -300,31 +260,53 @@ class MainActivity : Activity() {
         setupPlayer()
         setupSystemBackHandler()
 
-        adapter = DownloadsAdapter(
+        downloadsController = DownloadsController(
             context = this,
-            onItemClick = { download ->
-                showDownloadDetailsDialog(download)
-            },
-            onCancelClick = { download ->
-                DownloadForegroundService.cancel(this, download.id)
-            },
-            onPauseClick = { download ->
-                DownloadForegroundService.pause(this, download.id)
-            },
-            onResumeClick = { download ->
-                DownloadForegroundService.resume(this, download.id)
-            },
-            onRetryClick = { download ->
-                DownloadForegroundService.retry(this, download.id)
-            },
-            onOpenClick = { download ->
-                openCompletedDownload(download)
-            },
-            onShareClick = { download ->
-                shareCompletedDownload(download)
-            }
+            downloadsList = findViewById(R.id.downloadsList),
+            emptyDownloadsText = findViewById(R.id.emptyDownloadsText),
+            searchInput = findViewById(R.id.downloadsSearchInput),
+            filterAllButton = findViewById(R.id.downloadsFilterAllButton),
+            filterActiveButton = findViewById(R.id.downloadsFilterActiveButton),
+            filterPausedButton = findViewById(R.id.downloadsFilterPausedButton),
+            filterCompletedButton = findViewById(R.id.downloadsFilterCompletedButton),
+            filterFailedButton = findViewById(R.id.downloadsFilterFailedButton),
+            activeDownloadCard = findViewById(R.id.activeDownloadCard),
+            activeDownloadTitleText = findViewById(R.id.activeDownloadTitleText),
+            activeDownloadNameText = findViewById(R.id.activeDownloadNameText),
+            activeDownloadFormatText = findViewById(R.id.activeDownloadFormatText),
+            activeDownloadProgressText = findViewById(R.id.activeDownloadProgressText),
+            activeDownloadProgressBar = findViewById(R.id.activeDownloadProgressBar),
+            activeDownloadSpeedText = findViewById(R.id.activeDownloadSpeedText),
+            activeDownloadSizeText = findViewById(R.id.activeDownloadSizeText),
+            activeDownloadActionsRow = findViewById(R.id.activeDownloadActionsRow),
+            activeDownloadPrimaryActionButton = findViewById(R.id.activeDownloadPrimaryActionButton),
+            activeDownloadSecondaryActionButton = findViewById(R.id.activeDownloadSecondaryActionButton),
+            callbacks = DownloadsController.Callbacks(
+                onItemClick = { download ->
+                    showDownloadDetailsDialog(download)
+                },
+                onCancelClick = { download ->
+                    DownloadForegroundService.cancel(this, download.id)
+                },
+                onPauseClick = { download ->
+                    DownloadForegroundService.pause(this, download.id)
+                },
+                onResumeClick = { download ->
+                    DownloadForegroundService.resume(this, download.id)
+                },
+                onRetryClick = { download ->
+                    DownloadForegroundService.retry(this, download.id)
+                },
+                onOpenClick = { download ->
+                    openCompletedDownload(download)
+                },
+                onShareClick = { download ->
+                    shareCompletedDownload(download)
+                },
+                onRequestShowKeyboard = ::showKeyboardForCurrentFocus,
+                onRequestHideKeyboard = ::hideKeyboard
+            )
         )
-        findViewById<ListView>(R.id.downloadsList).adapter = adapter
 
         homeTabButton.setOnClickListener { showHome() }
         downloadsTabButton.setOnClickListener { showDownloads() }
@@ -365,24 +347,6 @@ class MainActivity : Activity() {
         useDefaultDownloadLocationButton.setOnClickListener { useDefaultDownloadLocation() }
         diagnosticsButton.setOnClickListener { showDiagnosticsDialog() }
         aboutAppButton.setOnClickListener { showAboutDialog() }
-        downloadsSearchInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-
-            override fun afterTextChanged(s: Editable?) {
-                val query = s?.toString().orEmpty()
-                if (query == downloadsSearchQuery) return
-                downloadsSearchQuery = query
-                renderDownloadsList()
-            }
-        })
-        downloadsFilterAllButton.setOnClickListener { setDownloadsFilter(DownloadsFilter.ALL) }
-        downloadsFilterActiveButton.setOnClickListener { setDownloadsFilter(DownloadsFilter.ACTIVE) }
-        downloadsFilterPausedButton.setOnClickListener { setDownloadsFilter(DownloadsFilter.PAUSED) }
-        downloadsFilterCompletedButton.setOnClickListener { setDownloadsFilter(DownloadsFilter.COMPLETED) }
-        downloadsFilterFailedButton.setOnClickListener { setDownloadsFilter(DownloadsFilter.FAILED) }
-
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             handleDownloadRequest(
                 rawUrl = rawUrl,
@@ -394,7 +358,7 @@ class MainActivity : Activity() {
         scope.launch {
             app.container.repository.observeDownloads().collectLatest { downloads ->
                 currentDownloads = downloads
-                renderDownloadsList()
+                downloadsController.submitDownloads(downloads)
                 renderHomeRecentDownloads()
                 renderPlayerList()
                 hasActiveDownloads = downloads.any {
@@ -478,7 +442,7 @@ class MainActivity : Activity() {
 
     private fun showHome() {
         currentScreen = PrimaryScreen.HOME
-        hideDownloadsSearch(clearQuery = true)
+        downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.VISIBLE
@@ -500,8 +464,8 @@ class MainActivity : Activity() {
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
         settingsContainer.visibility = View.GONE
-        setDownloadsFilter(DownloadsFilter.ALL, refreshOnly = true)
-        hideDownloadsSearch(clearQuery = true)
+        downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
+        downloadsController.hideSearch(clearQuery = true)
         updateSelectedTab(downloadsTabButton)
     }
 
@@ -516,44 +480,6 @@ class MainActivity : Activity() {
                 }
             )
         )
-    }
-
-    private fun setDownloadsFilter(filter: DownloadsFilter, refreshOnly: Boolean = false) {
-        downloadsFilter = filter
-        updateDownloadsFilterUi()
-        if (!refreshOnly) {
-            renderDownloadsList()
-        }
-    }
-
-    private fun setDownloadsSearchQuery(query: String, refreshOnly: Boolean = false) {
-        val normalizedQuery = query.trim()
-        downloadsSearchQuery = normalizedQuery
-        if (downloadsSearchInput.text?.toString().orEmpty() != normalizedQuery) {
-            downloadsSearchInput.setText(normalizedQuery)
-            downloadsSearchInput.setSelection(normalizedQuery.length)
-        }
-        if (!refreshOnly) {
-            renderDownloadsList()
-        }
-    }
-
-    private fun renderDownloadsList() {
-        val activeDownload = selectActiveDownload()
-        updateActiveDownloadCard(activeDownload)
-        val filteredDownloads = currentDownloads
-            .filter { activeDownload == null || it.id != activeDownload.id }
-            .filter { it.matchesDownloadsFilter(downloadsFilter) }
-            .filter { it.matchesDownloadsSearch(downloadsSearchQuery) }
-        adapter.submitList(filteredDownloads)
-        emptyDownloadsText.text = if (currentDownloads.isEmpty()) {
-            getString(R.string.empty_downloads)
-        } else if (filteredDownloads.isEmpty()) {
-            getString(R.string.downloads_empty_search)
-        } else {
-            getString(R.string.downloads_empty_filtered)
-        }
-        emptyDownloadsText.visibility = if (filteredDownloads.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun setupPlayer() {
@@ -1468,13 +1394,7 @@ class MainActivity : Activity() {
 
     private fun handleHeaderSearchClick() {
         when (currentScreen) {
-            PrimaryScreen.DOWNLOADS -> {
-                if (downloadsSearchInput.visibility == View.VISIBLE) {
-                    hideDownloadsSearch(clearQuery = true)
-                } else {
-                    showDownloadsSearch()
-                }
-            }
+            PrimaryScreen.DOWNLOADS -> downloadsController.toggleSearch()
             PrimaryScreen.HOME -> {
                 homeController.focusUrlInput()
                 showKeyboardForCurrentFocus()
@@ -1487,56 +1407,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showDownloadsSearch() {
-        downloadsSearchInput.visibility = View.VISIBLE
-        downloadsSearchInput.requestFocus()
-        downloadsSearchInput.post { showKeyboardForCurrentFocus() }
-    }
-
-    private fun hideDownloadsSearch(clearQuery: Boolean) {
-        if (clearQuery && downloadsSearchQuery.isNotBlank()) {
-            setDownloadsSearchQuery("", refreshOnly = false)
-        }
-        downloadsSearchInput.visibility = View.GONE
-        downloadsSearchInput.clearFocus()
-        hideKeyboard()
-    }
-
     private fun showKeyboardForCurrentFocus() {
         val inputManager = getSystemService(InputMethodManager::class.java) ?: return
         currentFocus?.let { inputManager.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT) }
     }
 
-    private fun hideKeyboard() {
+    private fun hideKeyboard(view: View) {
         val inputManager = getSystemService(InputMethodManager::class.java) ?: return
-        inputManager.hideSoftInputFromWindow(downloadsSearchInput.windowToken, 0)
-    }
-
-    private fun updateDownloadsFilterUi() {
-        val selectedColor = R.color.brand
-        val unselectedColor = R.color.text_muted
-        val buttons = listOf(
-            downloadsFilterAllButton,
-            downloadsFilterActiveButton,
-            downloadsFilterPausedButton,
-            downloadsFilterCompletedButton,
-            downloadsFilterFailedButton
-        )
-        buttons.forEach { button ->
-            val isSelected = when (button.id) {
-                R.id.downloadsFilterAllButton -> downloadsFilter == DownloadsFilter.ALL
-                R.id.downloadsFilterActiveButton -> downloadsFilter == DownloadsFilter.ACTIVE
-                R.id.downloadsFilterPausedButton -> downloadsFilter == DownloadsFilter.PAUSED
-                R.id.downloadsFilterCompletedButton -> downloadsFilter == DownloadsFilter.COMPLETED
-                R.id.downloadsFilterFailedButton -> downloadsFilter == DownloadsFilter.FAILED
-                else -> false
-            }
-            button.isSelected = isSelected
-            button.setBackgroundResource(
-                if (isSelected) R.drawable.bg_tab_selected else R.drawable.bg_tab_unselected
-            )
-            button.setTextColor(getColor(if (isSelected) selectedColor else unselectedColor))
-        }
+        inputManager.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
     private fun renderHomeRecentDownloads() {
@@ -1656,108 +1534,6 @@ class MainActivity : Activity() {
                     1f
                 )
             )
-        }
-    }
-
-    private fun selectActiveDownload(): DownloadEntity? {
-        return currentDownloads.firstDownloadByStatus(DownloadStatus.RUNNING)
-            ?: currentDownloads.firstDownloadByStatus(DownloadStatus.PREPARING)
-            ?: currentDownloads.firstDownloadByStatus(DownloadStatus.QUEUED)
-            ?: currentDownloads.firstDownloadByStatus(DownloadStatus.PAUSED)
-    }
-
-    private fun updateActiveDownloadCard(activeDownload: DownloadEntity?) {
-        if (activeDownload == null) {
-            activeDownloadCard.visibility = View.GONE
-            activeDownloadCard.setOnClickListener(null)
-            activeDownloadActionsRow.visibility = View.GONE
-            return
-        }
-
-        val progress = normalizedProgress(activeDownload)
-        val indeterminate = isIndeterminateDownload(activeDownload)
-        activeDownloadCard.visibility = View.VISIBLE
-        activeDownloadCard.setOnClickListener { showDownloadDetailsDialog(activeDownload) }
-        activeDownloadTitleText.text = activeDownloadCardTitle(activeDownload.status)
-        activeDownloadNameText.text = activeDownload.fileName
-        activeDownloadFormatText.text =
-            "${formatLabelForDetails(activeDownload)} - ${downloadStatusLabel(activeDownload.status)}"
-        activeDownloadProgressText.text = progressLabel(activeDownload, indeterminate, progress)
-        activeDownloadProgressBar.isIndeterminate = indeterminate
-        activeDownloadProgressBar.progress = progress
-        activeDownloadSpeedText.text = formatSpeedForDetails(activeDownload.speed)
-        activeDownloadSizeText.text = summaryDownloadSizeText(activeDownload)
-        bindActiveDownloadActions(activeDownload)
-    }
-
-    private fun bindActiveDownloadActions(download: DownloadEntity) {
-        val actions = activeDownloadActions(download)
-        activeDownloadActionsRow.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
-        bindActiveActionButton(activeDownloadPrimaryActionButton, actions.getOrNull(0), primary = true)
-        bindActiveActionButton(activeDownloadSecondaryActionButton, actions.getOrNull(1), primary = false)
-    }
-
-    private fun bindActiveActionButton(
-        button: Button,
-        action: Pair<String, () -> Unit>?,
-        primary: Boolean
-    ) {
-        button.visibility = if (action == null) View.GONE else View.VISIBLE
-        button.isEnabled = action != null
-        button.text = action?.first.orEmpty()
-        button.setBackgroundResource(if (primary) R.drawable.bg_button_primary else R.drawable.bg_button_secondary)
-        button.setTextColor(getColor(if (primary) R.color.button_primary_text else R.color.button_secondary_text))
-        button.setOnClickListener { action?.second?.invoke() }
-    }
-
-    private fun activeDownloadActions(download: DownloadEntity): List<Pair<String, () -> Unit>> {
-        val isHttp = DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)
-        return when (download.status) {
-            DownloadStatus.RUNNING -> {
-                if (isHttp) {
-                    listOf(
-                        getString(R.string.pause) to { DownloadForegroundService.pause(this, download.id) },
-                        getString(R.string.cancel) to { DownloadForegroundService.cancel(this, download.id) }
-                    )
-                } else {
-                    listOf(getString(R.string.cancel) to { DownloadForegroundService.cancel(this, download.id) })
-                }
-            }
-            DownloadStatus.PREPARING,
-            DownloadStatus.QUEUED -> listOf(
-                getString(R.string.cancel) to { DownloadForegroundService.cancel(this, download.id) }
-            )
-            DownloadStatus.PAUSED -> {
-                if (isHttp) {
-                    listOf(
-                        getString(R.string.resume) to { DownloadForegroundService.resume(this, download.id) },
-                        getString(R.string.cancel) to { DownloadForegroundService.cancel(this, download.id) }
-                    )
-                } else {
-                    listOf(getString(R.string.cancel) to { DownloadForegroundService.cancel(this, download.id) })
-                }
-            }
-            DownloadStatus.COMPLETED -> listOf(
-                getString(R.string.open) to { openCompletedDownload(download) },
-                getString(R.string.share) to { shareCompletedDownload(download) }
-            )
-            DownloadStatus.FAILED -> listOf(
-                getString(R.string.retry) to { DownloadForegroundService.retry(this, download.id) }
-            )
-            DownloadStatus.CANCELED -> emptyList()
-        }
-    }
-
-    private fun List<DownloadEntity>.firstDownloadByStatus(status: DownloadStatus): DownloadEntity? {
-        return firstOrNull { it.status == status }
-    }
-
-    private fun activeDownloadCardTitle(status: DownloadStatus): String {
-        return when (status) {
-            DownloadStatus.QUEUED -> getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> getString(R.string.status_preparing)
-            DownloadStatus.PAUSED -> getString(R.string.status_paused)
-            else -> getString(R.string.downloads_active_title)
         }
     }
 
@@ -2050,7 +1826,7 @@ class MainActivity : Activity() {
 
     private fun showBrowser() {
         currentScreen = PrimaryScreen.BROWSER
-        hideDownloadsSearch(clearQuery = true)
+        downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
@@ -2063,7 +1839,7 @@ class MainActivity : Activity() {
 
     private fun showPlayer() {
         currentScreen = PrimaryScreen.PLAYER
-        hideDownloadsSearch(clearQuery = true)
+        downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
@@ -2076,7 +1852,7 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings(scrollToDownloadLocation: Boolean = false) {
-        hideDownloadsSearch(clearQuery = false)
+        downloadsController.hideSearch(clearQuery = false)
         appHeader.visibility = View.GONE
         mainTabBar.visibility = View.GONE
         homeContainer.visibility = View.GONE
@@ -2141,36 +1917,6 @@ class MainActivity : Activity() {
             return true
         }
         return false
-    }
-
-    private fun DownloadEntity.matchesDownloadsFilter(filter: DownloadsFilter): Boolean {
-        return when (filter) {
-            DownloadsFilter.ALL -> true
-            DownloadsFilter.ACTIVE ->
-                status == DownloadStatus.QUEUED ||
-                    status == DownloadStatus.PREPARING ||
-                    status == DownloadStatus.RUNNING
-            DownloadsFilter.PAUSED -> status == DownloadStatus.PAUSED
-            DownloadsFilter.COMPLETED -> status == DownloadStatus.COMPLETED
-            DownloadsFilter.FAILED ->
-                status == DownloadStatus.FAILED ||
-                    status == DownloadStatus.CANCELED
-        }
-    }
-
-    private fun DownloadEntity.matchesDownloadsSearch(query: String): Boolean {
-        if (query.isBlank()) return true
-        val normalizedQuery = query.lowercase(Locale.getDefault())
-        val searchBlob = buildString {
-            append(fileName)
-            append(' ')
-            append(sourceUrl)
-            append(' ')
-            append(downloadStatusLabel(status))
-            append(' ')
-            append(formatLabelForDetails(this@matchesDownloadsSearch))
-        }.lowercase(Locale.getDefault())
-        return searchBlob.contains(normalizedQuery)
     }
 
     private fun updateDownloadLocationText() {
@@ -3216,14 +2962,6 @@ class MainActivity : Activity() {
         VIDEOS,
         AUDIOS,
         FILES
-    }
-
-    private enum class DownloadsFilter {
-        ALL,
-        ACTIVE,
-        PAUSED,
-        COMPLETED,
-        FAILED
     }
 
     private enum class PrimaryScreen {
