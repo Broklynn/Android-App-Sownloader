@@ -53,6 +53,7 @@ import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
+import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CoroutineScope
@@ -106,6 +107,7 @@ class MainActivity : Activity() {
     private lateinit var playerPlayPauseButton: Button
     private lateinit var playerNextButton: Button
     private lateinit var playerFullscreenButton: ImageButton
+    private lateinit var playerControlsController: PlayerControlsController
     private lateinit var playerListRenderer: PlayerListRenderer
     private lateinit var videoFullscreenOverlay: View
     private lateinit var videoFullscreenControls: View
@@ -209,6 +211,25 @@ class MainActivity : Activity() {
         videoFullscreenCurrentTimeText = findViewById(R.id.videoFullscreenCurrentTimeText)
         videoFullscreenDurationText = findViewById(R.id.videoFullscreenDurationText)
         videoFullscreenPlayPauseButton = findViewById(R.id.videoFullscreenPlayPauseButton)
+        playerControlsController = PlayerControlsController(
+            playerMusicChip = playerMusicChip,
+            playerVideoChip = playerVideoChip,
+            playerVideoView = playerVideoView,
+            playerFullscreenButton = playerFullscreenButton,
+            playerNowPlayingTitle = playerNowPlayingTitle,
+            playerNowPlayingSubtitle = playerNowPlayingSubtitle,
+            playerNowPlayingMetaText = playerNowPlayingMetaText,
+            playerSeekBar = playerSeekBar,
+            playerCurrentTimeText = playerCurrentTimeText,
+            playerDurationText = playerDurationText,
+            playerPreviousButton = playerPreviousButton,
+            playerPlayPauseButton = playerPlayPauseButton,
+            playerNextButton = playerNextButton,
+            videoFullscreenSeekBar = videoFullscreenSeekBar,
+            videoFullscreenCurrentTimeText = videoFullscreenCurrentTimeText,
+            videoFullscreenDurationText = videoFullscreenDurationText,
+            videoFullscreenPlayPauseButton = videoFullscreenPlayPauseButton
+        )
         videoFullscreenSeekFeedbackText = findViewById(R.id.videoFullscreenSeekFeedbackText)
         setupPlayer()
         setupSystemBackHandler()
@@ -456,7 +477,9 @@ class MainActivity : Activity() {
                 if (!fromUser) return
                 val duration = currentDuration()
                 if (duration > 0) {
-                    playerCurrentTimeText.text = formatPlaybackTime(progressToPosition(progress, duration))
+                    playerControlsController.updateInlineSeekPreview(
+                        formatPlaybackTime(progressToPosition(progress, duration))
+                    )
                 }
             }
 
@@ -478,7 +501,9 @@ class MainActivity : Activity() {
                 if (!fromUser) return
                 val duration = currentDuration()
                 if (duration > 0) {
-                    videoFullscreenCurrentTimeText.text = formatPlaybackTime(progressToPosition(progress, duration))
+                    playerControlsController.updateFullscreenSeekPreview(
+                        formatPlaybackTime(progressToPosition(progress, duration))
+                    )
                 }
             }
 
@@ -526,32 +551,15 @@ class MainActivity : Activity() {
     }
 
     private fun updatePlayerCategoryUi() {
-        listOf(playerMusicChip, playerVideoChip).forEach { button ->
-            val selected = when (button.id) {
-                R.id.playerMusicChip -> playerCategory == PlayerCategory.MUSIC
-                R.id.playerVideoChip -> playerCategory == PlayerCategory.VIDEO
-                else -> false
-            }
-            button.setBackgroundResource(
-                if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab_unselected
-            )
-            button.setTextColor(getColor(if (selected) R.color.brand else R.color.text_muted))
-        }
-        playerVideoView.visibility = if (
-            playerCategory == PlayerCategory.VIDEO &&
+        val isVideoVisible = playerCategory == PlayerCategory.VIDEO &&
             currentPlayerIndex >= 0 &&
             activeVideoMode == ActiveVideoMode.INLINE &&
             !isVideoFullscreenOpen()
-        ) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-        playerFullscreenButton.visibility = if (shouldShowInlineFullscreenButton()) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        playerControlsController.updateCategoryUi(
+            category = playerCategory,
+            isVideoVisible = isVideoVisible,
+            showFullscreenButton = shouldShowInlineFullscreenButton()
+        )
     }
 
     private fun renderPlayerList() {
@@ -584,11 +592,8 @@ class MainActivity : Activity() {
 
         stopCurrentPlayback(clearSelection = false)
         currentPlayerIndex = index
-        playerNowPlayingTitle.text = download.fileName
         updateNowPlayingInfo(download)
-        playerSeekBar.progress = 0
-        playerCurrentTimeText.text = getString(R.string.player_time_zero)
-        playerDurationText.text = getString(R.string.player_time_zero)
+        playerControlsController.resetInlineProgress(getString(R.string.player_time_zero))
         updatePlayerCategoryUi()
 
         if (playerCategory == PlayerCategory.MUSIC) {
@@ -781,16 +786,16 @@ class MainActivity : Activity() {
         stopVideoPlayback()
         if (clearSelection) {
             currentPlayerIndex = -1
-            playerNowPlayingTitle.text = getString(R.string.player_nothing_selected)
-            playerNowPlayingSubtitle.text = getString(R.string.player_select_file)
-            playerNowPlayingMetaText.text = getString(R.string.player_status_stopped)
-            playerSeekBar.progress = 0
-            playerCurrentTimeText.text = getString(R.string.player_time_zero)
-            playerDurationText.text = getString(R.string.player_time_zero)
+            playerControlsController.updateNowPlaying(
+                title = getString(R.string.player_nothing_selected),
+                subtitle = getString(R.string.player_select_file),
+                meta = getString(R.string.player_status_stopped)
+            )
+            playerControlsController.resetInlineProgress(getString(R.string.player_time_zero))
             playerArtworkPlaceholder.visibility = View.VISIBLE
             playerVideoView.visibility = View.GONE
-            playerFullscreenButton.visibility = View.GONE
             inlineFullscreenVisible = false
+            updatePlayerCategoryUi()
         }
         updateNowPlayingInfo()
         updatePlaybackButtons()
@@ -845,7 +850,7 @@ class MainActivity : Activity() {
             startPlaybackAt(currentPlayerIndex + 1)
         } else {
             stopCurrentPlayback(clearSelection = false)
-            playerPlayPauseButton.text = getString(R.string.player_play)
+            updatePlaybackButtons()
             updateNowPlayingInfo()
         }
     }
@@ -860,16 +865,13 @@ class MainActivity : Activity() {
         val duration = currentDuration()
         val position = currentPosition()
         if (duration > 0) {
-            if (!userSeeking) {
-                playerSeekBar.progress = positionToProgress(position, duration)
-            }
-            if (!fullscreenUserSeeking) {
-                videoFullscreenSeekBar.progress = positionToProgress(position, duration)
-            }
-            playerCurrentTimeText.text = formatPlaybackTime(position)
-            playerDurationText.text = formatPlaybackTime(duration)
-            videoFullscreenCurrentTimeText.text = formatPlaybackTime(position)
-            videoFullscreenDurationText.text = formatPlaybackTime(duration)
+            playerControlsController.updateProgress(
+                progress = positionToProgress(position, duration),
+                currentTime = formatPlaybackTime(position),
+                duration = formatPlaybackTime(duration),
+                updateInlineSeek = !userSeeking,
+                updateFullscreenSeek = !fullscreenUserSeeking
+            )
         }
         updatePlaybackButtons()
         updateNowPlayingInfo()
@@ -880,37 +882,33 @@ class MainActivity : Activity() {
 
     private fun updatePlaybackButtons() {
         val hasItems = playerItems.isNotEmpty()
-        playerPlayPauseButton.isEnabled = hasItems
-        playerPreviousButton.isEnabled = hasItems && currentPlayerIndex > 0
-        playerNextButton.isEnabled = hasItems && currentPlayerIndex >= 0 && currentPlayerIndex < playerItems.lastIndex
-        playerPlayPauseButton.text = if (isCurrentPlaybackRunning()) {
-            getString(R.string.player_pause)
-        } else {
-            getString(R.string.player_play)
-        }
-        videoFullscreenPlayPauseButton.setImageResource(
-            if (isCurrentPlaybackRunning()) R.drawable.ic_pause_simple else R.drawable.ic_play_simple
+        playerControlsController.updatePlaybackButtons(
+            hasItems = hasItems,
+            currentIndex = currentPlayerIndex,
+            lastIndex = playerItems.lastIndex,
+            isRunning = isCurrentPlaybackRunning(),
+            playText = getString(R.string.player_play),
+            pauseText = getString(R.string.player_pause)
         )
-        videoFullscreenPlayPauseButton.contentDescription = if (isCurrentPlaybackRunning()) {
-            getString(R.string.player_pause)
-        } else {
-            getString(R.string.player_play)
-        }
     }
 
     private fun updateNowPlayingInfo(download: DownloadEntity? = currentPlayingDownload()) {
         val current = download
         if (current == null || currentPlayerIndex < 0) {
-            playerNowPlayingTitle.text = getString(R.string.player_nothing_selected)
-            playerNowPlayingSubtitle.text = getString(R.string.player_select_file)
-            playerNowPlayingMetaText.text = getString(R.string.player_status_stopped)
+            playerControlsController.updateNowPlaying(
+                title = getString(R.string.player_nothing_selected),
+                subtitle = getString(R.string.player_select_file),
+                meta = getString(R.string.player_status_stopped)
+            )
             return
         }
 
         val formatLabel = formatLabelForDetails(current)
-        playerNowPlayingTitle.text = current.fileName
-        playerNowPlayingSubtitle.text = "${playerTypeLabel(current)} - $formatLabel"
-        playerNowPlayingMetaText.text = "${playbackStatusLabel()} - ${playerCurrentTimeText.text}/${playerDurationText.text}"
+        playerControlsController.updateNowPlaying(
+            title = current.fileName,
+            subtitle = "${playerTypeLabel(current)} - $formatLabel",
+            meta = "${playbackStatusLabel()} - ${playerCurrentTimeText.text}/${playerDurationText.text}"
+        )
     }
 
     private fun playbackStatusLabel(): String {
@@ -1018,9 +1016,11 @@ class MainActivity : Activity() {
         playerVideoView.visibility = View.GONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
         videoFullscreenTitleText.text = download.fileName
-        videoFullscreenSeekBar.progress = 0
-        videoFullscreenCurrentTimeText.text = formatPlaybackTime(position)
-        videoFullscreenDurationText.text = playerDurationText.text
+        playerControlsController.updateFullscreenProgress(
+            progress = 0,
+            currentTime = formatPlaybackTime(position),
+            duration = playerDurationText.text
+        )
         enterVideoFullscreenChrome()
         videoFullscreenOverlay.visibility = View.VISIBLE
         showFullscreenControls()
@@ -1058,9 +1058,7 @@ class MainActivity : Activity() {
         videoFullscreenOverlay.visibility = View.GONE
         clearFullscreenControlCallbacks()
         exitVideoFullscreenChrome()
-        videoFullscreenSeekBar.progress = 0
-        videoFullscreenCurrentTimeText.text = getString(R.string.player_time_zero)
-        videoFullscreenDurationText.text = getString(R.string.player_time_zero)
+        playerControlsController.resetFullscreenProgress(getString(R.string.player_time_zero))
 
         if (restoreInline && playerCategory == PlayerCategory.VIDEO && download != null) {
             val playbackUri = resolvePlaybackUri(download)
