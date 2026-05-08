@@ -676,199 +676,6 @@
             </FrameLayout>
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/browserContainer"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:text="@string/nav_browser"
-                android:textColor="@color/text_primary"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <EditText
-                    android:id="@+id/browserUrlInput"
-                    android:layout_width="0dp"
-                    android:layout_height="50dp"
-                    android:layout_weight="1"
-                    android:autofillHints="url"
-                    android:background="@drawable/bg_input"
-                    android:drawableStart="@drawable/ic_link_simple"
-                    android:drawablePadding="10dp"
-                    android:drawableTint="@color/text_muted"
-                    android:hint="@string/browser_url_hint"
-                    android:inputType="textUri"
-                    android:singleLine="true"
-                    android:textColor="@color/text_primary"
-                    android:textColorHint="@color/text_muted"
-                    android:textSize="14sp" />
-
-                <Button
-                    android:id="@+id/browserGoButton"
-                    android:layout_width="62dp"
-                    android:layout_height="50dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_button_primary"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:text="@string/go"
-                    android:textAllCaps="false"
-                    android:textColor="@color/button_primary_text"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/browserBackButton"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_button_secondary"
-                    android:drawableTop="@drawable/ic_arrow_left_simple"
-                    android:drawablePadding="2dp"
-                    android:drawableTint="@color/brand"
-                    android:enabled="false"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:singleLine="true"
-                    android:text="@string/browser_back"
-                    android:textAllCaps="false"
-                    android:textColor="@color/button_secondary_text"
-                    android:textSize="10sp" />
-
-                <Button
-                    android:id="@+id/browserForwardButton"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_button_secondary"
-                    android:drawableTop="@drawable/ic_arrow_right_simple"
-                    android:drawablePadding="2dp"
-                    android:drawableTint="@color/brand"
-                    android:enabled="false"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:singleLine="true"
-                    android:text="@string/browser_forward"
-                    android:textAllCaps="false"
-                    android:textColor="@color/button_secondary_text"
-                    android:textSize="10sp" />
-
-                <Button
-                    android:id="@+id/browserReloadButton"
-                    android:layout_width="0dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_button_secondary"
-                    android:drawableTop="@drawable/ic_refresh_simple"
-                    android:drawablePadding="2dp"
-                    android:drawableTint="@color/brand"
-                    android:enabled="false"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:singleLine="true"
-                    android:text="@string/browser_reload"
-                    android:textAllCaps="false"
-                    android:textColor="@color/button_secondary_text"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/browserDownloadButton"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_primary"
-                android:drawableEnd="@drawable/ic_download_simple"
-                android:drawablePadding="8dp"
-                android:drawableTint="@color/background_main"
-                android:minHeight="0dp"
-                android:text="@string/download_current_page"
-                android:textAllCaps="false"
-                android:textColor="@color/button_primary_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/browserDetectedMediaButton"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_chip"
-                android:enabled="false"
-                android:minHeight="0dp"
-                android:text="@string/browser_detected_media_initial"
-                android:textAllCaps="false"
-                android:textColor="@color/button_secondary_text"
-                android:textSize="13sp" />
-
-            <ProgressBar
-                android:id="@+id/browserProgressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="8dp"
-                android:indeterminate="false"
-                android:max="100"
-                android:progress="0"
-                android:progressBackgroundTint="@color/line"
-                android:progressTint="@color/brand"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/browserErrorText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/browser_page_load_error"
-                android:textColor="@color/danger"
-                android:textSize="13sp"
-                android:visibility="gone" />
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="10dp"
-                android:layout_weight="1"
-                android:background="@drawable/bg_webview_frame"
-                android:padding="3dp">
-
-                <WebView
-                    android:id="@+id/browserWebView"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@color/background_main" />
-            </FrameLayout>
-        </LinearLayout>
-
         <ScrollView
             android:id="@+id/playerContainer"
             android:layout_width="match_parent"
@@ -1167,7 +974,7 @@
                         android:background="@drawable/bg_button_secondary"
                         android:minHeight="0dp"
                         android:minWidth="0dp"
-                        android:text="@string/browser_back"
+                        android:text="@string/settings_back"
                         android:textAllCaps="false"
                         android:textColor="@color/button_secondary_text"
                         android:textSize="13sp" />
@@ -1506,7 +1313,7 @@
             android:textSize="11sp" />
 
         <Button
-            android:id="@+id/browserTabButton"
+            android:id="@+id/playerTabButton"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_marginStart="4dp"

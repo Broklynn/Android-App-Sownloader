@@ -10,7 +10,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.media.MediaPlayer
@@ -63,14 +62,6 @@ import java.text.DateFormat
 import java.io.File
 import java.util.Locale
 import org.json.JSONArray
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -78,7 +69,6 @@ class MainActivity : Activity() {
     private lateinit var appHeader: View
     private lateinit var mainTabBar: View
     private lateinit var homeContainer: View
-    private lateinit var browserContainer: View
     private lateinit var playerContainer: View
     private lateinit var downloadsContainer: View
     private lateinit var settingsMenuButton: ImageButton
@@ -94,19 +84,9 @@ class MainActivity : Activity() {
     private lateinit var settingsController: SettingsController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
-    private lateinit var browserTabButton: Button
+    private lateinit var playerTabButton: Button
     private lateinit var defaultQualityValueText: TextView
     private lateinit var defaultQualityButton: Button
-    private lateinit var browserUrlInput: EditText
-    private lateinit var browserGoButton: Button
-    private lateinit var browserBackButton: Button
-    private lateinit var browserForwardButton: Button
-    private lateinit var browserReloadButton: Button
-    private lateinit var browserDownloadButton: Button
-    private lateinit var browserDetectedMediaButton: Button
-    private lateinit var browserProgressBar: ProgressBar
-    private lateinit var browserErrorText: TextView
-    private lateinit var browserWebView: WebView
     private lateinit var playerMusicChip: Button
     private lateinit var playerVideoChip: Button
     private lateinit var playerVideoFrame: View
@@ -154,15 +134,12 @@ class MainActivity : Activity() {
     private var previousRequestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var previousSystemUiVisibility = 0
     private var fullscreenChromeApplied = false
-    private var browserPageLoading = false
     private var hasActiveDownloads = false
     private var ytDlpUpdateInProgress = false
     private var ytDlpUpdateMessage: String? = null
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var currentScreen = PrimaryScreen.HOME
     private var backInvokedCallback: OnBackInvokedCallback? = null
-    private val detectedMediaLock = Any()
-    private val detectedMediaCandidates = LinkedHashMap<String, MediaCandidate>()
     private val settingsPreferences: SharedPreferences
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
     private val app: AndroidDownloadApp
@@ -183,7 +160,6 @@ class MainActivity : Activity() {
         appHeader = findViewById(R.id.appHeader)
         mainTabBar = findViewById(R.id.mainTabBar)
         homeContainer = findViewById(R.id.homeContainer)
-        browserContainer = findViewById(R.id.browserContainer)
         playerContainer = findViewById(R.id.playerContainer)
         downloadsContainer = findViewById(R.id.downloadsContainer)
         settingsMenuButton = findViewById(R.id.settingsMenuButton)
@@ -196,19 +172,9 @@ class MainActivity : Activity() {
         homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
-        browserTabButton = findViewById(R.id.browserTabButton)
+        playerTabButton = findViewById(R.id.playerTabButton)
         defaultQualityValueText = findViewById(R.id.defaultQualityValueText)
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
-        browserUrlInput = findViewById(R.id.browserUrlInput)
-        browserGoButton = findViewById(R.id.browserGoButton)
-        browserBackButton = findViewById(R.id.browserBackButton)
-        browserForwardButton = findViewById(R.id.browserForwardButton)
-        browserReloadButton = findViewById(R.id.browserReloadButton)
-        browserDownloadButton = findViewById(R.id.browserDownloadButton)
-        browserDetectedMediaButton = findViewById(R.id.browserDetectedMediaButton)
-        browserProgressBar = findViewById(R.id.browserProgressBar)
-        browserErrorText = findViewById(R.id.browserErrorText)
-        browserWebView = findViewById(R.id.browserWebView)
         playerMusicChip = findViewById(R.id.playerMusicChip)
         playerVideoChip = findViewById(R.id.playerVideoChip)
         playerVideoFrame = findViewById(R.id.playerVideoFrame)
@@ -236,7 +202,6 @@ class MainActivity : Activity() {
         videoFullscreenDurationText = findViewById(R.id.videoFullscreenDurationText)
         videoFullscreenPlayPauseButton = findViewById(R.id.videoFullscreenPlayPauseButton)
         videoFullscreenSeekFeedbackText = findViewById(R.id.videoFullscreenSeekFeedbackText)
-        setupBrowserWebView()
         setupPlayer()
         setupSystemBackHandler()
 
@@ -313,31 +278,10 @@ class MainActivity : Activity() {
 
         homeTabButton.setOnClickListener { showHome() }
         downloadsTabButton.setOnClickListener { showDownloads() }
-        browserTabButton.setOnClickListener { showPlayer() }
+        playerTabButton.setOnClickListener { showPlayer() }
         settingsMenuButton.setOnClickListener { showSettings() }
         headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
-        browserGoButton.setOnClickListener { loadBrowserPage() }
-        browserBackButton.setOnClickListener {
-            if (browserWebView.canGoBack()) {
-                browserWebView.goBack()
-            }
-            updateBrowserNavigationButtons()
-        }
-        browserForwardButton.setOnClickListener {
-            if (browserWebView.canGoForward()) {
-                browserWebView.goForward()
-            }
-            updateBrowserNavigationButtons()
-        }
-        browserReloadButton.setOnClickListener {
-            if (!browserWebView.url.isNullOrBlank() && browserWebView.url != "about:blank") {
-                clearBrowserError()
-                browserWebView.reload()
-            }
-        }
-        browserDownloadButton.setOnClickListener { downloadCurrentBrowserPage() }
-        browserDetectedMediaButton.setOnClickListener { showDetectedMediaDialog() }
         clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
         clearRecentButton.setOnClickListener {
             saveRecentDownloadUrls(emptyList())
@@ -415,13 +359,6 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         unregisterSystemBackHandler()
         releasePlayer()
-        browserWebView.apply {
-            stopLoading()
-            loadUrl("about:blank")
-            clearHistory()
-            removeAllViews()
-            destroy()
-        }
         scope.cancel()
         super.onDestroy()
     }
@@ -442,7 +379,6 @@ class MainActivity : Activity() {
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.VISIBLE
-        browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
         settingsController.hide()
@@ -456,7 +392,6 @@ class MainActivity : Activity() {
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
-        browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
         settingsController.hide()
@@ -1395,10 +1330,6 @@ class MainActivity : Activity() {
                 homeController.focusUrlInput()
                 showKeyboardForCurrentFocus()
             }
-            PrimaryScreen.BROWSER -> {
-                browserUrlInput.requestFocus()
-                showKeyboardForCurrentFocus()
-            }
             PrimaryScreen.PLAYER -> Unit
         }
     }
@@ -1820,31 +1751,17 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showBrowser() {
-        currentScreen = PrimaryScreen.BROWSER
-        downloadsController.hideSearch(clearQuery = true)
-        appHeader.visibility = View.VISIBLE
-        mainTabBar.visibility = View.VISIBLE
-        homeContainer.visibility = View.GONE
-        browserContainer.visibility = View.VISIBLE
-        playerContainer.visibility = View.GONE
-        downloadsContainer.visibility = View.GONE
-        settingsController.hide()
-        updateSelectedTab(null)
-    }
-
     private fun showPlayer() {
         currentScreen = PrimaryScreen.PLAYER
         downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = View.GONE
-        browserContainer.visibility = View.GONE
         playerContainer.visibility = View.VISIBLE
         downloadsContainer.visibility = View.GONE
         settingsController.hide()
         renderPlayerList()
-        updateSelectedTab(browserTabButton)
+        updateSelectedTab(playerTabButton)
     }
 
     private fun showSettings(scrollToDownloadLocation: Boolean = false) {
@@ -1852,7 +1769,6 @@ class MainActivity : Activity() {
         appHeader.visibility = View.GONE
         mainTabBar.visibility = View.GONE
         homeContainer.visibility = View.GONE
-        browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
         updateDefaultQualityText()
@@ -1867,7 +1783,6 @@ class MainActivity : Activity() {
         when (currentScreen) {
             PrimaryScreen.HOME -> showHome()
             PrimaryScreen.DOWNLOADS -> showDownloads()
-            PrimaryScreen.BROWSER -> showBrowser()
             PrimaryScreen.PLAYER -> showPlayer()
         }
     }
@@ -1900,11 +1815,6 @@ class MainActivity : Activity() {
         }
         if (settingsController.isVisible()) {
             closeSettingsOverlay()
-            return true
-        }
-        if (browserContainer.visibility == View.VISIBLE && browserWebView.canGoBack()) {
-            browserWebView.goBack()
-            updateBrowserNavigationButtons()
             return true
         }
         return false
@@ -2251,7 +2161,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateSelectedTab(selectedTab: Button?) {
-        listOf(homeTabButton, downloadsTabButton, browserTabButton).forEach { tab ->
+        listOf(homeTabButton, downloadsTabButton, playerTabButton).forEach { tab ->
             val isSelected = tab == selectedTab
             tab.isSelected = isSelected
             tab.setBackgroundResource(
@@ -2456,340 +2366,6 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun loadBrowserPage() {
-        val url = normalizeBrowserUrl(browserUrlInput.text?.toString())
-        if (url == null) {
-            showToast(getString(R.string.invalid_url))
-            return
-        }
-        clearBrowserError()
-        browserWebView.loadUrl(url)
-    }
-
-    private fun downloadCurrentBrowserPage() {
-        val currentUrl = browserWebView.url?.takeIf { it.isNotBlank() && it != "about:blank" }
-            ?: normalizeBrowserUrl(browserUrlInput.text?.toString())
-        if (currentUrl == null) {
-            showToast(getString(R.string.browser_no_page_loaded))
-            return
-        }
-        handleDownloadRequest(
-            rawUrl = currentUrl,
-            onError = { showToast(it) }
-        )
-    }
-
-    private fun normalizeBrowserUrl(rawUrl: String?): String? {
-        val value = rawUrl?.trim().orEmpty()
-        if (value.isBlank()) return null
-        val normalized = if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
-            value
-        } else {
-            "https://$value"
-        }
-        return normalized.takeIf { UrlValidator.isValidHttpUrl(it) }
-    }
-
-    private fun setupBrowserWebView() {
-        CookieManager.getInstance().setAcceptCookie(false)
-        browserWebView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            allowFileAccess = false
-            allowContentAccess = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            javaScriptCanOpenWindowsAutomatically = false
-        }
-        CookieManager.getInstance().setAcceptThirdPartyCookies(browserWebView, false)
-        browserWebView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                browserProgressBar.progress = newProgress.coerceIn(0, 100)
-                browserProgressBar.visibility = if (browserPageLoading && newProgress < 100) {
-                    View.VISIBLE
-                } else {
-                    View.GONE
-                }
-            }
-        }
-        browserWebView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): WebResourceResponse? {
-                collectDetectedMediaUrl(request?.url?.toString())
-                return null
-            }
-
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val target = request?.url?.toString().orEmpty()
-                if (target.isBlank()) return false
-                updateBrowserUrlInput(target)
-                return false
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                val target = url.orEmpty()
-                if (target.isBlank()) return false
-                updateBrowserUrlInput(target)
-                return false
-            }
-
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                browserPageLoading = true
-                clearDetectedMediaUrls()
-                collectDetectedMediaUrl(url)
-                clearBrowserError()
-                updateBrowserUrlInput(url)
-                browserProgressBar.progress = 0
-                browserProgressBar.visibility = View.VISIBLE
-                updateBrowserNavigationButtons()
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                browserPageLoading = false
-                updateBrowserUrlInput(url)
-                browserProgressBar.visibility = View.GONE
-                updateBrowserNavigationButtons()
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?
-            ) {
-                if (request?.isForMainFrame == true) {
-                    browserPageLoading = false
-                    browserProgressBar.visibility = View.GONE
-                    browserErrorText.text = getString(R.string.browser_page_load_error)
-                    browserErrorText.visibility = View.VISIBLE
-                    updateBrowserNavigationButtons()
-                }
-            }
-        }
-        updateBrowserNavigationButtons()
-        updateDetectedMediaButton()
-    }
-
-    private fun collectDetectedMediaUrl(rawUrl: String?) {
-        val url = rawUrl?.trim().orEmpty()
-        val candidate = buildMediaCandidate(url) ?: return
-        val wasAdded = synchronized(detectedMediaLock) {
-            if (detectedMediaCandidates.containsKey(candidate.url)) {
-                false
-            } else {
-                detectedMediaCandidates[candidate.url] = candidate
-                true
-            }
-        }
-        if (wasAdded) {
-            runOnUiThread { updateDetectedMediaButton() }
-        }
-    }
-
-    private fun buildMediaCandidate(url: String): MediaCandidate? {
-        if (!UrlValidator.isValidHttpUrl(url)) return null
-        val extension = detectMediaExtension(url) ?: return null
-        return MediaCandidate(
-            url = url,
-            displayName = buildMediaDisplayName(url),
-            extension = extension,
-            typeLabel = typeLabelForExtension(extension)
-        )
-    }
-
-    private fun detectMediaExtension(url: String): String? {
-        val lowerUrl = url.lowercase(Locale.US)
-        return MEDIA_EXTENSIONS.firstOrNull { extension -> lowerUrl.contains(".$extension") }
-    }
-
-    private fun buildMediaDisplayName(url: String): String {
-        val lastPathSegment = runCatching {
-            Uri.parse(url).lastPathSegment.orEmpty()
-        }.getOrDefault("")
-        val rawName = lastPathSegment
-            .substringBefore('?')
-            .substringBefore('#')
-            .trim()
-        val decodedName = runCatching {
-            Uri.decode(rawName)
-        }.getOrDefault(rawName).trim()
-        val displayName = decodedName.ifBlank { getString(R.string.browser_media_default_name) }
-        return displayName.limitLength(MAX_MEDIA_DISPLAY_NAME_LENGTH)
-    }
-
-    private fun typeLabelForExtension(extension: String): String {
-        return when (extension) {
-            "mp4" -> getString(R.string.browser_media_type_video_mp4)
-            "webm" -> getString(R.string.browser_media_type_video_webm)
-            "m3u8" -> getString(R.string.browser_media_type_hls_streaming)
-            "mp3" -> getString(R.string.browser_media_type_audio_mp3)
-            "m4a" -> getString(R.string.browser_media_type_audio_m4a)
-            "jpg",
-            "jpeg",
-            "png" -> getString(R.string.browser_media_type_image)
-            "pdf" -> getString(R.string.browser_media_type_pdf)
-            "zip" -> getString(R.string.browser_media_type_zip)
-            else -> getString(R.string.browser_media_type_generic)
-        }
-    }
-
-    private fun String.limitLength(maxLength: Int): String {
-        if (length <= maxLength) return this
-        return take(maxLength - ELLIPSIS.length).trimEnd() + ELLIPSIS
-    }
-
-    private fun clearDetectedMediaUrls() {
-        synchronized(detectedMediaLock) {
-            detectedMediaCandidates.clear()
-        }
-        updateDetectedMediaButton()
-    }
-
-    private fun updateDetectedMediaButton() {
-        val count = synchronized(detectedMediaLock) {
-            detectedMediaCandidates.size
-        }
-        browserDetectedMediaButton.text = getString(R.string.browser_detected_media_count, count)
-        browserDetectedMediaButton.isEnabled = count > 0
-    }
-
-    private fun showDetectedMediaDialog() {
-        val candidates = synchronized(detectedMediaLock) {
-            detectedMediaCandidates.values.toList()
-        }
-        if (candidates.isEmpty()) {
-            showToast(getString(R.string.browser_detected_media_empty))
-            updateDetectedMediaButton()
-            return
-        }
-        val defaultFilter = if (candidates.any { it.isVideo() || it.isAudio() }) {
-            MediaFilter.VIDEO_AUDIO
-        } else {
-            MediaFilter.ALL
-        }
-        showDetectedMediaListDialog(defaultFilter)
-    }
-
-    private fun showDetectedMediaListDialog(filter: MediaFilter) {
-        val candidates = synchronized(detectedMediaLock) {
-            detectedMediaCandidates.values.toList()
-        }.filter { candidate ->
-            candidate.matchesFilter(filter)
-        }.sortedMediaCandidates()
-        if (candidates.isEmpty()) {
-            showToast(getString(R.string.browser_detected_media_empty_category))
-            return
-        }
-        val labels = candidates.map { candidate ->
-            "${candidate.displayName}\n${candidate.typeLabel}"
-        }
-        showDarkOptionsDialog(
-            title = filter.dialogTitle(),
-            options = labels.map { DarkOption(it) },
-            neutralButton = DarkDialogButton(getString(R.string.browser_detected_media_filter_button)) {
-                showDetectedMediaFilterDialog()
-            }
-        ) { which ->
-                handleDownloadRequest(
-                    rawUrl = candidates[which].url,
-                    onError = { showToast(it) }
-                )
-            }
-    }
-
-    private fun showDetectedMediaFilterDialog() {
-        val filters = listOf(
-            MediaFilter.ALL,
-            MediaFilter.VIDEOS,
-            MediaFilter.AUDIOS,
-            MediaFilter.FILES
-        )
-        val labels = filters.map { it.label() }
-        showDarkOptionsDialog(
-            title = getString(R.string.browser_detected_media_filter_title),
-            options = labels.map { DarkOption(it) }
-        ) { which ->
-                showDetectedMediaListDialog(filters[which])
-            }
-    }
-
-    private fun MediaCandidate.matchesFilter(filter: MediaFilter): Boolean {
-        return when (filter) {
-            MediaFilter.ALL -> true
-            MediaFilter.VIDEO_AUDIO -> isVideo() || isAudio()
-            MediaFilter.VIDEOS -> isVideo()
-            MediaFilter.AUDIOS -> isAudio()
-            MediaFilter.FILES -> isFileOrOther()
-        }
-    }
-
-    private fun MediaCandidate.isVideo(): Boolean {
-        return extension in VIDEO_EXTENSIONS
-    }
-
-    private fun MediaCandidate.isAudio(): Boolean {
-        return extension in AUDIO_EXTENSIONS
-    }
-
-    private fun MediaCandidate.isFileOrOther(): Boolean {
-        return extension in FILE_EXTENSIONS
-    }
-
-    private fun MediaFilter.label(): String {
-        return when (this) {
-            MediaFilter.ALL -> getString(R.string.browser_media_filter_all)
-            MediaFilter.VIDEO_AUDIO -> getString(R.string.browser_media_filter_video_audio)
-            MediaFilter.VIDEOS -> getString(R.string.browser_media_filter_videos)
-            MediaFilter.AUDIOS -> getString(R.string.browser_media_filter_audios)
-            MediaFilter.FILES -> getString(R.string.browser_media_filter_files)
-        }
-    }
-
-    private fun MediaFilter.dialogTitle(): String {
-        return when (this) {
-            MediaFilter.VIDEO_AUDIO -> getString(R.string.browser_media_filter_video_audio)
-            else -> label()
-        }
-    }
-
-    private fun List<MediaCandidate>.sortedMediaCandidates(): List<MediaCandidate> {
-        return withIndex()
-            .sortedWith(
-                compareBy<IndexedValue<MediaCandidate>> { mediaSortRank(it.value.extension) }
-                    .thenBy { it.index }
-            )
-            .map { it.value }
-    }
-
-    private fun mediaSortRank(extension: String): Int {
-        return when (extension) {
-            "mp4",
-            "webm",
-            "m3u8" -> 0
-            "mp3",
-            "m4a" -> 1
-            else -> 2
-        }
-    }
-
-    private fun updateBrowserUrlInput(url: String?) {
-        val target = url.orEmpty()
-        if (target.isBlank()) return
-        browserUrlInput.setText(target)
-        browserUrlInput.setSelection(target.length)
-    }
-
-    private fun clearBrowserError() {
-        browserErrorText.visibility = View.GONE
-    }
-
-    private fun updateBrowserNavigationButtons() {
-        browserBackButton.isEnabled = browserWebView.canGoBack()
-        browserForwardButton.isEnabled = browserWebView.canGoForward()
-        browserReloadButton.isEnabled = browserWebView.url?.let { it.isNotBlank() && it != "about:blank" } == true
-    }
-
     override fun onBackPressed() {
         if (handleBackNavigation()) {
             return
@@ -2925,31 +2501,15 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private data class MediaCandidate(
-        val url: String,
-        val displayName: String,
-        val extension: String,
-        val typeLabel: String
-    )
-
     private data class DefaultQualityOption(
         val label: String,
         val preferenceValue: String,
         val formatSelector: String?
     )
 
-    private enum class MediaFilter {
-        ALL,
-        VIDEO_AUDIO,
-        VIDEOS,
-        AUDIOS,
-        FILES
-    }
-
     private enum class PrimaryScreen {
         HOME,
         DOWNLOADS,
-        BROWSER,
         PLAYER
     }
 
@@ -2983,27 +2543,10 @@ class MainActivity : Activity() {
         private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
         private const val PREF_RECENT_DOWNLOAD_URLS = "recent_download_urls"
         private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
-        private const val MAX_MEDIA_DISPLAY_NAME_LENGTH = 56
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val MAX_RECENT_DOWNLOAD_URLS = 10
         private const val MAX_RECENT_DOWNLOAD_URLS_DISPLAYED = 5
         private const val REQUEST_DOWNLOAD_TREE = 2002
-        private const val ELLIPSIS = "..."
         private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
-        private val VIDEO_EXTENSIONS = setOf("mp4", "webm", "m3u8")
-        private val AUDIO_EXTENSIONS = setOf("mp3", "m4a")
-        private val FILE_EXTENSIONS = setOf("pdf", "zip", "jpg", "jpeg", "png")
-        private val MEDIA_EXTENSIONS = listOf(
-            "mp4",
-            "webm",
-            "m3u8",
-            "mp3",
-            "m4a",
-            "jpg",
-            "jpeg",
-            "png",
-            "pdf",
-            "zip"
-        )
     }
 }
