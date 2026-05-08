@@ -5,7 +5,6 @@
     <string name="downloads">Downloads</string>
     <string name="nav_downloads">Baixados</string>
     <string name="nav_player">Player</string>
-    <string name="settings_tab">Config</string>
     <string name="settings_back">Voltar</string>
     <string name="settings_title">Configurações</string>
     <string name="url_hint">Cole uma URL ou link de vídeo</string>
@@ -38,9 +37,7 @@
     <string name="home_recent_downloads_title">Downloads recentes</string>
     <string name="home_recent_downloads_empty">Nenhum download ainda.</string>
     <string name="home_recent_urls_title">URLs recentes</string>
-    <string name="recent_downloads_title">Recentes</string>
     <string name="clear_recent_downloads">Limpar recentes</string>
-    <string name="downloads_recent_empty">Nenhum recente ainda.</string>
     <string name="home_card_mp4_title">MP4</string>
     <string name="home_card_mp4_body">Vídeo</string>
     <string name="home_card_mp3_title">MP3</string>
