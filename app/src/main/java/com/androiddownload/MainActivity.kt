@@ -49,7 +49,10 @@ import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.home.HomeController
+import com.androiddownload.ui.navigation.PrimaryScreen
+import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
+import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -2506,23 +2509,6 @@ class MainActivity : Activity() {
         val preferenceValue: String,
         val formatSelector: String?
     )
-
-    private enum class PrimaryScreen {
-        HOME,
-        DOWNLOADS,
-        PLAYER
-    }
-
-    private enum class PlayerCategory {
-        MUSIC,
-        VIDEO
-    }
-
-    private enum class ActiveVideoMode {
-        NONE,
-        INLINE,
-        FULLSCREEN
-    }
 
     private data class DarkDialogButton(
         val label: String,
