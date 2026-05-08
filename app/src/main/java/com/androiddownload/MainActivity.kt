@@ -520,10 +520,14 @@ class MainActivity : Activity() {
         })
         playerVideoView.setOnCompletionListener { handlePlaybackCompleted() }
         playerVideoView.setOnErrorListener { _, _, _ ->
+            if (activeVideoMode != ActiveVideoMode.INLINE) return@setOnErrorListener true
             showPlaybackErrorAndMaybeSkip()
             true
         }
         videoFullscreenView.setOnCompletionListener {
+            if (activeVideoMode != ActiveVideoMode.FULLSCREEN || !isVideoFullscreenOpen()) {
+                return@setOnCompletionListener
+            }
             playbackHandler.removeCallbacksAndMessages(null)
             fullscreenVideoPrepared = false
             updatePlaybackButtons()
@@ -531,6 +535,9 @@ class MainActivity : Activity() {
             updatePlaybackProgress()
         }
         videoFullscreenView.setOnErrorListener { _, _, _ ->
+            if (activeVideoMode != ActiveVideoMode.FULLSCREEN || !isVideoFullscreenOpen()) {
+                return@setOnErrorListener true
+            }
             showToast(getString(R.string.player_playback_error))
             closeVideoFullscreen(restoreInline = false)
             true
@@ -656,6 +663,9 @@ class MainActivity : Activity() {
         videoPrepared = false
         try {
             playerVideoView.setOnPreparedListener {
+                if (activeVideoMode != ActiveVideoMode.INLINE) {
+                    return@setOnPreparedListener
+                }
                 videoPrepared = true
                 playerVideoView.visibility = View.VISIBLE
                 if (positionMs > 0) {
@@ -671,6 +681,9 @@ class MainActivity : Activity() {
                 updatePlaybackProgress()
             }
             playerVideoView.setOnErrorListener { _, _, _ ->
+                if (activeVideoMode != ActiveVideoMode.INLINE) {
+                    return@setOnErrorListener true
+                }
                 onError?.invoke() ?: showPlaybackErrorAndMaybeSkip()
                 true
             }
@@ -750,6 +763,7 @@ class MainActivity : Activity() {
             videoFullscreenView.pause()
         }
         playbackHandler.removeCallbacksAndMessages(null)
+        inlineControlsHandler.removeCallbacksAndMessages(null)
         if (isVideoFullscreenOpen()) {
             showFullscreenControls()
             fullscreenControlsHandler.removeCallbacksAndMessages(null)
@@ -779,6 +793,8 @@ class MainActivity : Activity() {
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
         clearFullscreenControlCallbacks()
+        userSeeking = false
+        fullscreenUserSeeking = false
         closeVideoFullscreen(restoreInline = false)
         stopAudioPlayback()
         stopVideoPlayback()
@@ -1026,6 +1042,9 @@ class MainActivity : Activity() {
         fullscreenVideoPrepared = false
         try {
             videoFullscreenView.setOnPreparedListener {
+                if (activeVideoMode != ActiveVideoMode.FULLSCREEN || !isVideoFullscreenOpen()) {
+                    return@setOnPreparedListener
+                }
                 fullscreenVideoPrepared = true
                 videoFullscreenView.setVideoSize(it.videoWidth, it.videoHeight)
                 if (position > 0) {
