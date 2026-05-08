@@ -51,6 +51,7 @@ import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.player.AspectRatioVideoView
+import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,7 +81,6 @@ class MainActivity : Activity() {
     private lateinit var browserContainer: View
     private lateinit var playerContainer: View
     private lateinit var downloadsContainer: View
-    private lateinit var settingsContainer: View
     private lateinit var settingsMenuButton: ImageButton
     private lateinit var headerSearchButton: ImageButton
     private lateinit var clearFinishedButton: Button
@@ -89,18 +89,9 @@ class MainActivity : Activity() {
     private lateinit var recentDownloadsList: LinearLayout
     private lateinit var homeRecentDownloadsSection: LinearLayout
     private lateinit var homeRecentDownloadsList: LinearLayout
-    private lateinit var downloadLocationCard: View
-    private lateinit var downloadLocationText: TextView
-    private lateinit var chooseDownloadLocationButton: Button
-    private lateinit var useDefaultDownloadLocationButton: Button
-    private lateinit var ytdlpUpdateStatusText: TextView
-    private lateinit var updateYtDlpButton: Button
-    private lateinit var autoUpdateYtDlpButton: Button
-    private lateinit var diagnosticsButton: Button
-    private lateinit var aboutAppButton: Button
-    private lateinit var settingsCloseButton: Button
     private lateinit var homeController: HomeController
     private lateinit var downloadsController: DownloadsController
+    private lateinit var settingsController: SettingsController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
     private lateinit var browserTabButton: Button
@@ -195,7 +186,6 @@ class MainActivity : Activity() {
         browserContainer = findViewById(R.id.browserContainer)
         playerContainer = findViewById(R.id.playerContainer)
         downloadsContainer = findViewById(R.id.downloadsContainer)
-        settingsContainer = findViewById(R.id.settingsContainer)
         settingsMenuButton = findViewById(R.id.settingsMenuButton)
         headerSearchButton = findViewById(R.id.headerSearchButton)
         clearFinishedButton = findViewById(R.id.clearFinishedButton)
@@ -204,16 +194,6 @@ class MainActivity : Activity() {
         recentDownloadsList = findViewById(R.id.recentDownloadsList)
         homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
         homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
-        downloadLocationCard = findViewById(R.id.downloadLocationCard)
-        downloadLocationText = findViewById(R.id.downloadLocationText)
-        chooseDownloadLocationButton = findViewById(R.id.chooseDownloadLocationButton)
-        useDefaultDownloadLocationButton = findViewById(R.id.useDefaultDownloadLocationButton)
-        ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText)
-        updateYtDlpButton = findViewById(R.id.updateYtDlpButton)
-        autoUpdateYtDlpButton = findViewById(R.id.autoUpdateYtDlpButton)
-        diagnosticsButton = findViewById(R.id.diagnosticsButton)
-        aboutAppButton = findViewById(R.id.aboutAppButton)
-        settingsCloseButton = findViewById(R.id.settingsCloseButton)
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         browserTabButton = findViewById(R.id.browserTabButton)
@@ -308,12 +288,34 @@ class MainActivity : Activity() {
             )
         )
 
+        settingsController = SettingsController(
+            settingsContainer = findViewById(R.id.settingsContainer),
+            downloadLocationCard = findViewById(R.id.downloadLocationCard),
+            downloadLocationText = findViewById(R.id.downloadLocationText),
+            chooseDownloadLocationButton = findViewById(R.id.chooseDownloadLocationButton),
+            useDefaultDownloadLocationButton = findViewById(R.id.useDefaultDownloadLocationButton),
+            ytdlpUpdateStatusText = findViewById(R.id.ytdlpUpdateStatusText),
+            updateYtDlpButton = findViewById(R.id.updateYtDlpButton),
+            autoUpdateYtDlpButton = findViewById(R.id.autoUpdateYtDlpButton),
+            diagnosticsButton = findViewById(R.id.diagnosticsButton),
+            aboutAppButton = findViewById(R.id.aboutAppButton),
+            settingsCloseButton = findViewById(R.id.settingsCloseButton),
+            callbacks = SettingsController.Callbacks(
+                onChooseDownloadLocation = ::chooseDownloadLocation,
+                onUseDefaultDownloadLocation = ::useDefaultDownloadLocation,
+                onUpdateYtDlp = ::updateYtDlpManually,
+                onToggleAutoUpdateYtDlp = ::toggleAutoUpdateYtDlp,
+                onDiagnostics = ::showDiagnosticsDialog,
+                onAbout = ::showAboutDialog,
+                onCloseSettings = ::closeSettingsOverlay
+            )
+        )
+
         homeTabButton.setOnClickListener { showHome() }
         downloadsTabButton.setOnClickListener { showDownloads() }
         browserTabButton.setOnClickListener { showPlayer() }
         settingsMenuButton.setOnClickListener { showSettings() }
         headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
-        settingsCloseButton.setOnClickListener { closeSettingsOverlay() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
         browserGoButton.setOnClickListener { loadBrowserPage() }
         browserBackButton.setOnClickListener {
@@ -341,12 +343,6 @@ class MainActivity : Activity() {
             saveRecentDownloadUrls(emptyList())
             renderRecentDownloads()
         }
-        updateYtDlpButton.setOnClickListener { updateYtDlpManually() }
-        autoUpdateYtDlpButton.setOnClickListener { toggleAutoUpdateYtDlp() }
-        chooseDownloadLocationButton.setOnClickListener { chooseDownloadLocation() }
-        useDefaultDownloadLocationButton.setOnClickListener { useDefaultDownloadLocation() }
-        diagnosticsButton.setOnClickListener { showDiagnosticsDialog() }
-        aboutAppButton.setOnClickListener { showAboutDialog() }
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             handleDownloadRequest(
                 rawUrl = rawUrl,
@@ -449,7 +445,7 @@ class MainActivity : Activity() {
         browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
-        settingsContainer.visibility = View.GONE
+        settingsController.hide()
         renderHomeRecentDownloads()
         renderRecentDownloads()
         updateSelectedTab(homeTabButton)
@@ -463,7 +459,7 @@ class MainActivity : Activity() {
         browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.VISIBLE
-        settingsContainer.visibility = View.GONE
+        settingsController.hide()
         downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
         downloadsController.hideSearch(clearQuery = true)
         updateSelectedTab(downloadsTabButton)
@@ -1317,7 +1313,7 @@ class MainActivity : Activity() {
         fullscreenChromeApplied = false
         requestedOrientation = previousRequestedOrientation
         window.decorView.systemUiVisibility = previousSystemUiVisibility
-        if (settingsContainer.visibility != View.VISIBLE) {
+        if (!settingsController.isVisible()) {
             appHeader.visibility = View.VISIBLE
             mainTabBar.visibility = View.VISIBLE
         }
@@ -1833,7 +1829,7 @@ class MainActivity : Activity() {
         browserContainer.visibility = View.VISIBLE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
-        settingsContainer.visibility = View.GONE
+        settingsController.hide()
         updateSelectedTab(null)
     }
 
@@ -1846,7 +1842,7 @@ class MainActivity : Activity() {
         browserContainer.visibility = View.GONE
         playerContainer.visibility = View.VISIBLE
         downloadsContainer.visibility = View.GONE
-        settingsContainer.visibility = View.GONE
+        settingsController.hide()
         renderPlayerList()
         updateSelectedTab(browserTabButton)
     }
@@ -1859,17 +1855,12 @@ class MainActivity : Activity() {
         browserContainer.visibility = View.GONE
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
-        settingsContainer.visibility = View.VISIBLE
         updateDefaultQualityText()
         updateDownloadLocationText()
         updateYtDlpUpdateUiState()
         updateAutoUpdateYtDlpUiState()
         updateSelectedTab(null)
-        if (scrollToDownloadLocation) {
-            settingsContainer.post {
-                (settingsContainer as? ScrollView)?.smoothScrollTo(0, downloadLocationCard.top)
-            }
-        }
+        settingsController.show(scrollToDownloadLocation)
     }
 
     private fun closeSettingsOverlay() {
@@ -1907,7 +1898,7 @@ class MainActivity : Activity() {
             closeVideoFullscreen(restoreInline = true)
             return true
         }
-        if (settingsContainer.visibility == View.VISIBLE) {
+        if (settingsController.isVisible()) {
             closeSettingsOverlay()
             return true
         }
@@ -1921,7 +1912,7 @@ class MainActivity : Activity() {
 
     private fun updateDownloadLocationText() {
         val customUri = DownloadDestinationResolver.customTreeUri(this)
-        downloadLocationText.text = if (customUri != null) {
+        val locationText = if (customUri != null) {
             getString(
                 R.string.download_location_selected,
                 DownloadDestinationResolver.summarizeUri(customUri)
@@ -1932,6 +1923,7 @@ class MainActivity : Activity() {
                 DownloadDestinationResolver.defaultDestinationLabel()
             )
         }
+        settingsController.updateDownloadLocationText(locationText)
     }
 
     private fun showAboutDialog() {
@@ -2049,25 +2041,13 @@ class MainActivity : Activity() {
     }
 
     private fun updateYtDlpUpdateUiState() {
-        val enabled = !ytDlpUpdateInProgress && !hasActiveDownloads
-        updateYtDlpButton.isEnabled = enabled
-        when {
-            ytDlpUpdateInProgress -> {
-                ytdlpUpdateStatusText.visibility = View.VISIBLE
-                ytdlpUpdateStatusText.text = getString(R.string.update_ytdlp_in_progress)
-            }
-            ytDlpUpdateMessage != null -> {
-                ytdlpUpdateStatusText.visibility = View.VISIBLE
-                ytdlpUpdateStatusText.text = ytDlpUpdateMessage
-            }
-            hasActiveDownloads -> {
-                ytdlpUpdateStatusText.visibility = View.VISIBLE
-                ytdlpUpdateStatusText.text = getString(R.string.update_ytdlp_busy)
-            }
-            else -> {
-                ytdlpUpdateStatusText.visibility = View.GONE
-            }
-        }
+        settingsController.setYtDlpUpdateState(
+            isInProgress = ytDlpUpdateInProgress,
+            hasActiveDownloads = hasActiveDownloads,
+            message = ytDlpUpdateMessage,
+            inProgressText = getString(R.string.update_ytdlp_in_progress),
+            busyText = getString(R.string.update_ytdlp_busy)
+        )
     }
 
     private fun toggleAutoUpdateYtDlp() {
@@ -2080,8 +2060,10 @@ class MainActivity : Activity() {
 
     private fun updateAutoUpdateYtDlpUiState() {
         val enabled = settingsPreferences.getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
-        autoUpdateYtDlpButton.text = getString(
-            if (enabled) R.string.auto_update_ytdlp_enabled else R.string.auto_update_ytdlp_disabled
+        settingsController.setAutoUpdateEnabled(
+            isEnabled = enabled,
+            enabledText = getString(R.string.auto_update_ytdlp_enabled),
+            disabledText = getString(R.string.auto_update_ytdlp_disabled)
         )
     }
 
