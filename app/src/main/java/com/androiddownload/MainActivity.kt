@@ -37,6 +37,7 @@ import android.widget.VideoView
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
@@ -64,7 +65,6 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.io.File
 import java.util.Locale
-import org.json.JSONArray
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -145,6 +145,8 @@ class MainActivity : Activity() {
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private val settingsPreferences: SharedPreferences
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
+    private val recentDownloadsStore: RecentDownloadsStore
+        get() = RecentDownloadsStore(settingsPreferences)
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -311,7 +313,7 @@ class MainActivity : Activity() {
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
         clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
         clearRecentButton.setOnClickListener {
-            saveRecentDownloadUrls(emptyList())
+            recentDownloadsStore.clear()
             renderRecentDownloads()
         }
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
@@ -1456,12 +1458,12 @@ class MainActivity : Activity() {
     }
 
     private fun renderRecentDownloads() {
-        val recentUrls = loadRecentDownloadUrls()
+        val recentUrls = recentDownloadsStore.load()
         recentDownloadsSection.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
         clearRecentButton.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
         recentDownloadsList.removeAllViews()
 
-        recentUrls.take(MAX_RECENT_DOWNLOAD_URLS_DISPLAYED).forEachIndexed { index, url ->
+        recentUrls.take(RecentDownloadsStore.MAX_RECENT_DOWNLOAD_URLS_DISPLAYED).forEachIndexed { index, url ->
             val button = Button(this).apply {
                 text = url
                 setBackgroundResource(R.drawable.bg_chip)
@@ -1497,35 +1499,7 @@ class MainActivity : Activity() {
     }
 
     private fun addRecentDownloadUrl(url: String) {
-        val recentUrls = loadRecentDownloadUrls().toMutableList()
-        recentUrls.removeAll { it == url }
-        recentUrls.add(0, url)
-        if (recentUrls.size > MAX_RECENT_DOWNLOAD_URLS) {
-            recentUrls.subList(MAX_RECENT_DOWNLOAD_URLS, recentUrls.size).clear()
-        }
-        saveRecentDownloadUrls(recentUrls)
-    }
-
-    private fun loadRecentDownloadUrls(): List<String> {
-        val raw = settingsPreferences.getString(PREF_RECENT_DOWNLOAD_URLS, null).orEmpty()
-        if (raw.isBlank()) return emptyList()
-
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (index in 0 until array.length()) {
-                    array.optString(index).trim().takeIf { it.isNotBlank() }?.let { add(it) }
-                }
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    private fun saveRecentDownloadUrls(urls: List<String>) {
-        val array = JSONArray()
-        urls.take(MAX_RECENT_DOWNLOAD_URLS).forEach { array.put(it) }
-        settingsPreferences.edit()
-            .putString(PREF_RECENT_DOWNLOAD_URLS, array.toString())
-            .apply()
+        recentDownloadsStore.add(url)
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
@@ -2459,11 +2433,8 @@ class MainActivity : Activity() {
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
         private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
         private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
-        private const val PREF_RECENT_DOWNLOAD_URLS = "recent_download_urls"
         private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
-        private const val MAX_RECENT_DOWNLOAD_URLS = 10
-        private const val MAX_RECENT_DOWNLOAD_URLS_DISPLAYED = 5
         private const val REQUEST_DOWNLOAD_TREE = 2002
         private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
     }
