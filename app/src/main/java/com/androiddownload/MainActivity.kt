@@ -53,6 +53,7 @@ import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
+import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,8 +106,7 @@ class MainActivity : Activity() {
     private lateinit var playerPlayPauseButton: Button
     private lateinit var playerNextButton: Button
     private lateinit var playerFullscreenButton: ImageButton
-    private lateinit var playerList: LinearLayout
-    private lateinit var playerEmptyText: TextView
+    private lateinit var playerListRenderer: PlayerListRenderer
     private lateinit var videoFullscreenOverlay: View
     private lateinit var videoFullscreenControls: View
     private lateinit var videoFullscreenCloseButton: ImageButton
@@ -193,8 +193,13 @@ class MainActivity : Activity() {
         playerPlayPauseButton = findViewById(R.id.playerPlayPauseButton)
         playerNextButton = findViewById(R.id.playerNextButton)
         playerFullscreenButton = findViewById(R.id.playerFullscreenButton)
-        playerList = findViewById(R.id.playerList)
-        playerEmptyText = findViewById(R.id.playerEmptyText)
+        playerListRenderer = PlayerListRenderer(
+            context = this,
+            playerList = findViewById(R.id.playerList),
+            playerEmptyText = findViewById(R.id.playerEmptyText),
+            formatLabelProvider = ::formatLabelForDetails,
+            onItemClick = { index -> startPlaybackAt(index) }
+        )
         videoFullscreenOverlay = findViewById(R.id.videoFullscreenOverlay)
         videoFullscreenControls = findViewById(R.id.videoFullscreenControls)
         videoFullscreenCloseButton = findViewById(R.id.videoFullscreenCloseButton)
@@ -550,7 +555,6 @@ class MainActivity : Activity() {
     }
 
     private fun renderPlayerList() {
-        if (!::playerList.isInitialized) return
         val previousPlayingId = currentPlayingDownload()?.id
         playerItems = currentDownloads.filter { it.matchesPlayerCategory(playerCategory) }
         if (currentPlayerIndex >= playerItems.size ||
@@ -562,99 +566,12 @@ class MainActivity : Activity() {
         }
 
         updatePlayerCategoryUi()
-        playerList.removeAllViews()
-        playerEmptyText.text = if (playerCategory == PlayerCategory.MUSIC) {
-            getString(R.string.player_empty_music)
-        } else {
-            getString(R.string.player_empty_video)
-        }
-        playerEmptyText.visibility = if (playerItems.isEmpty()) View.VISIBLE else View.GONE
-
-        playerItems.forEachIndexed { index, download ->
-            val card = buildPlayerDownloadCard(download, index)
-            playerList.addView(
-                card,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    if (index > 0) topMargin = dp(10)
-                }
-            )
-        }
+        playerListRenderer.render(
+            items = playerItems,
+            category = playerCategory,
+            currentIndex = currentPlayerIndex
+        )
         updatePlaybackButtons()
-    }
-
-    private fun buildPlayerDownloadCard(download: DownloadEntity, index: Int): View {
-        val isCurrent = index == currentPlayerIndex
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_download_item)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            setOnClickListener { startPlaybackAt(index) }
-
-            addView(
-                TextView(context).apply {
-                    text = download.fileName
-                    setTextColor(getColor(if (isCurrent) R.color.brand else R.color.text_primary))
-                    textSize = 15f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-            }
-
-            row.addView(
-                TextView(context).apply {
-                    text = formatLabelForDetails(download)
-                    setTextColor(getColor(R.color.text_secondary))
-                    textSize = 13f
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                },
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            )
-
-            row.addView(
-                Button(context).apply {
-                    text = if (playerCategory == PlayerCategory.MUSIC) {
-                        getString(R.string.player_play)
-                    } else {
-                        getString(R.string.player_watch)
-                    }
-                    isAllCaps = false
-                    minHeight = 0
-                    minimumHeight = 0
-                    setTextColor(getColor(R.color.button_secondary_text))
-                    setBackgroundResource(R.drawable.bg_button_secondary)
-                    textSize = 13f
-                    setPadding(dp(14), 0, dp(14), 0)
-                    setOnClickListener { startPlaybackAt(index) }
-                },
-                LinearLayout.LayoutParams(dp(104), dp(40)).apply {
-                    marginStart = dp(12)
-                }
-            )
-
-            addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = dp(10)
-                }
-            )
-        }
     }
 
     private fun startPlaybackAt(index: Int, skipBudget: Int = playerItems.size) {
