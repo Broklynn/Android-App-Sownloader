@@ -46,10 +46,11 @@ import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.common.DarkDialogButton
 import com.androiddownload.ui.common.DarkDialogFactory
-import com.androiddownload.ui.common.DarkOption
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
 import com.androiddownload.ui.navigation.PrimaryScreen
+import com.androiddownload.ui.downloads.QualityDialogController
+import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
@@ -153,6 +154,8 @@ class MainActivity : Activity() {
         get() = DefaultQualityPreferences(settingsPreferences)
     private val fileActionsController: FileActionsController
         get() = FileActionsController(this, ::showToast)
+    private val qualityDialogController: QualityDialogController
+        get() = QualityDialogController(this)
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -1792,14 +1795,6 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun sectionForQualityLabel(label: String): String? {
-        return when {
-            label.startsWith("MP4", ignoreCase = true) -> getString(R.string.quality_section_video)
-            label.startsWith("MP3", ignoreCase = true) -> getString(R.string.quality_section_audio)
-            else -> null
-        }
-    }
-
     private fun updateSelectedTab(selectedTab: Button?) {
         listOf(homeTabButton, downloadsTabButton, playerTabButton).forEach { tab ->
             val isSelected = tab == selectedTab
@@ -1873,18 +1868,14 @@ class MainActivity : Activity() {
         url: String,
         homeController: HomeController? = null
     ) {
-        val options = YtDlpQualityOptions.build(this@MainActivity, null)
-        DarkDialogFactory.showOptionsDialog(
-            activity = this,
-            title = getString(R.string.choose_quality_title),
-            options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) }
-        ) { which ->
-                startQueuedDownload(
-                    url = url,
-                    qualitySelector = options[which].formatSelector,
-                    homeController = homeController
-                )
-            }
+        val options = downloadQualityOptions()
+        qualityDialogController.showDownloadQualityDialog(options) { option ->
+            startQueuedDownload(
+                url = url,
+                qualitySelector = option.formatSelector,
+                homeController = homeController
+            )
+        }
     }
 
     private fun startQueuedDownload(
@@ -1940,15 +1931,10 @@ class MainActivity : Activity() {
         val currentIndex = options.indexOfFirst {
             it.preferenceValue == selectedDefaultQualityOption().preferenceValue
         }.coerceAtLeast(0)
-        DarkDialogFactory.showOptionsDialog(
-            activity = this,
-            title = getString(R.string.default_video_quality_title),
-            options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) },
-            selectedIndex = currentIndex
-        ) { which ->
-                saveDefaultQualityOption(options[which])
-                updateDefaultQualityText()
-            }
+        qualityDialogController.showDefaultQualityDialog(options, currentIndex) { option ->
+            saveDefaultQualityOption(option)
+            updateDefaultQualityText()
+        }
     }
 
     private fun updateDefaultQualityText() {
@@ -1958,25 +1944,29 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun selectedDefaultQualityOption(): DefaultQualityOption {
+    private fun selectedDefaultQualityOption(): QualityOptionUi {
         val savedValue = defaultQualityPreferences.load()
         return defaultQualityOptions().firstOrNull { it.preferenceValue == savedValue }
             ?: defaultQualityOptions().first()
     }
 
-    private fun saveDefaultQualityOption(option: DefaultQualityOption) {
+    private fun saveDefaultQualityOption(option: QualityOptionUi) {
         defaultQualityPreferences.save(option.preferenceValue)
     }
 
-    private fun defaultQualityOptions(): List<DefaultQualityOption> {
+    private fun defaultQualityOptions(): List<QualityOptionUi> {
         return listOf(
-            DefaultQualityOption(
+            QualityOptionUi(
                 label = getString(R.string.default_quality_ask_always),
                 preferenceValue = DefaultQualityPreferences.DEFAULT_QUALITY_ASK_VALUE,
                 formatSelector = null
             )
-        ) + YtDlpQualityOptions.build(this, null).map { option ->
-            DefaultQualityOption(
+        ) + downloadQualityOptions()
+    }
+
+    private fun downloadQualityOptions(): List<QualityOptionUi> {
+        return YtDlpQualityOptions.build(this, null).map { option ->
+            QualityOptionUi(
                 label = option.label,
                 preferenceValue = option.formatSelector,
                 formatSelector = option.formatSelector
@@ -2030,12 +2020,6 @@ class MainActivity : Activity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
-    private data class DefaultQualityOption(
-        val label: String,
-        val preferenceValue: String,
-        val formatSelector: String?
-    )
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
