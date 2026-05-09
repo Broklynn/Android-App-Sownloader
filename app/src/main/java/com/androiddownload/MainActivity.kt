@@ -2,7 +2,6 @@ package com.androiddownload
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ActivityNotFoundException
@@ -11,7 +10,6 @@ import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Environment
@@ -47,6 +45,9 @@ import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
+import com.androiddownload.ui.common.DarkDialogButton
+import com.androiddownload.ui.common.DarkDialogFactory
+import com.androiddownload.ui.common.DarkOption
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
 import com.androiddownload.ui.navigation.PrimaryScreen
@@ -444,7 +445,8 @@ class MainActivity : Activity() {
     }
 
     private fun showClearFinishedDownloadsDialog() {
-        showDarkMessageDialog(
+        DarkDialogFactory.showMessageDialog(
+            this,
             title = getString(R.string.clear_finished_downloads_title),
             message = getString(R.string.clear_finished_downloads_message),
             buttons = listOf(
@@ -1418,7 +1420,8 @@ class MainActivity : Activity() {
             )
         }
 
-        showDarkContentDialog(
+        DarkDialogFactory.showContentDialog(
+            activity = this,
             title = download.fileName,
             contentView = contentView,
             buttons = buttons
@@ -1659,7 +1662,8 @@ class MainActivity : Activity() {
             append(getString(R.string.about_app_responsible_use))
         }
 
-        showDarkMessageDialog(
+        DarkDialogFactory.showMessageDialog(
+            this,
             title = getString(R.string.about_dialog_title),
             message = message,
             buttons = listOf(DarkDialogButton(getString(android.R.string.ok), primary = true))
@@ -1675,7 +1679,8 @@ class MainActivity : Activity() {
             textSize = 13f
             setLineSpacing(dp(2).toFloat(), 1f)
         }
-        showDarkContentDialog(
+        DarkDialogFactory.showContentDialog(
+            activity = this,
             title = getString(R.string.diagnostics_title),
             contentView = ScrollView(this).apply {
                 addView(
@@ -1786,181 +1791,6 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun showDarkMessageDialog(
-        title: String,
-        message: String,
-        buttons: List<DarkDialogButton>
-    ) {
-        val messageView = TextView(this).apply {
-            text = message
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 14f
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }
-        showDarkContentDialog(title, messageView, buttons)
-    }
-
-    private fun showDarkOptionsDialog(
-        title: String,
-        options: List<DarkOption>,
-        selectedIndex: Int = -1,
-        neutralButton: DarkDialogButton? = null,
-        onSelected: (Int) -> Unit
-    ) {
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        var lastSection: String? = null
-        lateinit var dialog: AlertDialog
-        options.forEachIndexed { index, option ->
-            if (!option.section.isNullOrBlank() && option.section != lastSection) {
-                lastSection = option.section
-                list.addView(
-                    TextView(this).apply {
-                        text = option.section
-                        setTextColor(getColor(R.color.brand))
-                        textSize = 12f
-                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                        includeFontPadding = false
-                    },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = if (list.childCount == 0) 0 else dp(12)
-                        bottomMargin = dp(8)
-                    }
-                )
-            }
-            val selected = index == selectedIndex
-            list.addView(
-                TextView(this).apply {
-                    text = option.label
-                    setTextColor(getColor(if (selected) R.color.brand else R.color.text_primary))
-                    textSize = 14f
-                    typeface = if (selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
-                    setBackgroundResource(if (selected) R.drawable.bg_button_secondary else R.drawable.bg_dialog_option)
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
-                    isClickable = true
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    maxLines = 3
-                    setOnClickListener {
-                        dialog.dismiss()
-                        onSelected(index)
-                    }
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(8)
-                }
-            )
-        }
-
-        val buttons = buildList {
-            neutralButton?.let { add(it) }
-            add(DarkDialogButton(getString(R.string.details_close)))
-        }
-        dialog = showDarkContentDialog(
-            title = title,
-            contentView = ScrollView(this).apply { addView(list) },
-            buttons = buttons
-        )
-    }
-
-    private fun showDarkContentDialog(
-        title: String,
-        contentView: View,
-        buttons: List<DarkDialogButton>
-    ): AlertDialog {
-        lateinit var dialog: AlertDialog
-        val padding = dp(20)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_dialog_surface)
-            setPadding(padding, padding, padding, padding)
-            addView(
-                TextView(context).apply {
-                    text = title
-                    setTextColor(getColor(R.color.text_primary))
-                    textSize = 20f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(14)
-                }
-            )
-            addView(
-                contentView,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-            addView(
-                LinearLayout(context).apply {
-                    val stackButtons = buttons.size > 2
-                    orientation = if (stackButtons) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.END
-                    buttons.forEachIndexed { index, buttonSpec ->
-                        addView(
-                            Button(context).apply {
-                                text = buttonSpec.label
-                                isAllCaps = false
-                                minHeight = 0
-                                minWidth = 0
-                                setTextColor(getColor(if (buttonSpec.primary) R.color.button_primary_text else R.color.button_secondary_text))
-                                setBackgroundResource(if (buttonSpec.primary) R.drawable.bg_button_primary else R.drawable.bg_button_secondary)
-                                setPadding(dp(14), 0, dp(14), 0)
-                                setOnClickListener {
-                                    dialog.dismiss()
-                                    buttonSpec.onClick?.invoke()
-                                }
-                            },
-                            if (stackButtons) {
-                                LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    dp(42)
-                                ).apply {
-                                    if (index > 0) topMargin = dp(8)
-                                }
-                            } else {
-                                LinearLayout.LayoutParams(
-                                    0,
-                                    dp(42),
-                                    1f
-                                ).apply {
-                                    if (index > 0) leftMargin = dp(8)
-                                }
-                            }
-                        )
-                    }
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = dp(18)
-                }
-            )
-        }
-
-        dialog = AlertDialog.Builder(this)
-            .setView(container)
-            .create()
-        dialog.setOnShowListener {
-            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        }
-        dialog.show()
-        return dialog
-    }
-
     private fun sectionForQualityLabel(label: String): String? {
         return when {
             label.startsWith("MP4", ignoreCase = true) -> getString(R.string.quality_section_video)
@@ -2043,7 +1873,8 @@ class MainActivity : Activity() {
         homeController: HomeController? = null
     ) {
         val options = YtDlpQualityOptions.build(this@MainActivity, null)
-        showDarkOptionsDialog(
+        DarkDialogFactory.showOptionsDialog(
+            activity = this,
             title = getString(R.string.choose_quality_title),
             options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) }
         ) { which ->
@@ -2108,7 +1939,8 @@ class MainActivity : Activity() {
         val currentIndex = options.indexOfFirst {
             it.preferenceValue == selectedDefaultQualityOption().preferenceValue
         }.coerceAtLeast(0)
-        showDarkOptionsDialog(
+        DarkDialogFactory.showOptionsDialog(
+            activity = this,
             title = getString(R.string.default_video_quality_title),
             options = options.map { DarkOption(it.label, sectionForQualityLabel(it.label)) },
             selectedIndex = currentIndex
@@ -2309,17 +2141,6 @@ class MainActivity : Activity() {
         val label: String,
         val preferenceValue: String,
         val formatSelector: String?
-    )
-
-    private data class DarkDialogButton(
-        val label: String,
-        val primary: Boolean = false,
-        val onClick: (() -> Unit)? = null
-    )
-
-    private data class DarkOption(
-        val label: String,
-        val section: String? = null
     )
 
     companion object {
