@@ -759,6 +759,9 @@
                         android:layout_width="match_parent"
                         android:layout_height="190dp"
                         android:background="@drawable/bg_webview_frame"
+                        android:clipChildren="true"
+                        android:clipToOutline="true"
+                        android:clipToPadding="true"
                         android:padding="3dp">
 
                         <TextView
@@ -772,10 +775,11 @@
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
-                        <VideoView
+                        <com.androiddownload.ui.player.AspectRatioVideoView
                             android:id="@+id/playerVideoView"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
+                            android:layout_gravity="center"
                             android:visibility="gone" />
 
                         <ImageButton

@@ -33,7 +33,6 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
-import android.widget.VideoView
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -48,6 +47,7 @@ import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.home.HomeController
+import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
 import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
@@ -83,6 +83,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentDownloadsSection: LinearLayout
     private lateinit var homeRecentDownloadsList: LinearLayout
     private lateinit var homeController: HomeController
+    private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
     private lateinit var settingsController: SettingsController
     private lateinit var homeTabButton: Button
@@ -94,7 +95,7 @@ class MainActivity : Activity() {
     private lateinit var playerVideoChip: Button
     private lateinit var playerVideoFrame: View
     private lateinit var playerArtworkPlaceholder: TextView
-    private lateinit var playerVideoView: VideoView
+    private lateinit var playerVideoView: AspectRatioVideoView
     private lateinit var playerNowPlayingTitle: TextView
     private lateinit var playerNowPlayingSubtitle: TextView
     private lateinit var playerNowPlayingMetaText: TextView
@@ -175,6 +176,16 @@ class MainActivity : Activity() {
         recentDownloadsList = findViewById(R.id.recentDownloadsList)
         homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
         homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
+        homeRecentDownloadsRenderer = HomeRecentDownloadsRenderer(
+            context = this,
+            section = homeRecentDownloadsSection,
+            list = homeRecentDownloadsList,
+            formatLabelProvider = ::formatLabelForDetails,
+            statusLabelProvider = { download -> downloadStatusLabel(download.status) },
+            sizeTextProvider = ::summaryDownloadSizeText,
+            badgeLabelProvider = ::downloadTypeBadgeLabel,
+            onItemClick = ::showDownloadDetailsDialog
+        )
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         playerTabButton = findViewById(R.id.playerTabButton)
@@ -669,6 +680,7 @@ class MainActivity : Activity() {
                     return@setOnPreparedListener
                 }
                 videoPrepared = true
+                playerVideoView.setVideoSize(it.videoWidth, it.videoHeight)
                 playerVideoView.visibility = View.VISIBLE
                 if (positionMs > 0) {
                     playerVideoView.seekTo(positionMs)
@@ -1282,123 +1294,8 @@ class MainActivity : Activity() {
     }
 
     private fun renderHomeRecentDownloads() {
-        homeRecentDownloadsSection.visibility = View.VISIBLE
-        homeRecentDownloadsList.removeAllViews()
-
         val downloads = currentDownloads.take(MAX_HOME_RECENT_DOWNLOADS_DISPLAYED)
-        if (downloads.isEmpty()) {
-            val emptyText = TextView(this).apply {
-                text = getString(R.string.home_recent_downloads_empty)
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-                setBackgroundResource(R.drawable.bg_empty_state)
-                setPadding(dp(16), dp(18), dp(16), dp(18))
-            }
-            homeRecentDownloadsList.addView(
-                emptyText,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-            return
-        }
-
-        downloads.forEachIndexed { index, download ->
-            val card = buildHomeRecentDownloadCard(download)
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            if (index > 0) {
-                params.topMargin = dp(10)
-            }
-            homeRecentDownloadsList.addView(card, params)
-        }
-    }
-
-    private fun buildHomeRecentDownloadCard(download: DownloadEntity): View {
-        val formatLabel = formatLabelForDetails(download)
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.bg_download_item)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            isClickable = true
-            setOnClickListener { showDownloadDetailsDialog(download) }
-
-            addView(
-                TextView(context).apply {
-                    text = downloadTypeBadgeLabel(download, formatLabel)
-                    gravity = android.view.Gravity.CENTER
-                    setBackgroundResource(R.drawable.bg_media_art_placeholder)
-                    setTextColor(getColor(R.color.background_main))
-                    textSize = 12f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                },
-                LinearLayout.LayoutParams(dp(56), dp(56))
-            )
-
-            addView(
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(12), 0, 0, 0)
-
-                    addView(
-                        TextView(context).apply {
-                            text = download.fileName
-                            setTextColor(getColor(R.color.text_primary))
-                            textSize = 15f
-                            typeface = android.graphics.Typeface.DEFAULT_BOLD
-                            maxLines = 1
-                            ellipsize = android.text.TextUtils.TruncateAt.END
-                        },
-                        LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        )
-                    )
-
-                    addView(
-                        TextView(context).apply {
-                            text = "$formatLabel - ${downloadStatusLabel(download.status)}"
-                            setTextColor(getColor(R.color.text_secondary))
-                            textSize = 12f
-                            maxLines = 1
-                            ellipsize = android.text.TextUtils.TruncateAt.END
-                        },
-                        LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            topMargin = dp(5)
-                        }
-                    )
-
-                    addView(
-                        TextView(context).apply {
-                            text = summaryDownloadSizeText(download)
-                            setTextColor(getColor(R.color.text_muted))
-                            textSize = 12f
-                            maxLines = 1
-                            ellipsize = android.text.TextUtils.TruncateAt.END
-                        },
-                        LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            topMargin = dp(5)
-                        }
-                    )
-                },
-                LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f
-                )
-            )
-        }
+        homeRecentDownloadsRenderer.render(downloads)
     }
 
     private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
