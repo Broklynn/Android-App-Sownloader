@@ -36,6 +36,7 @@ import android.widget.ScrollView
 import androidx.core.content.FileProvider
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
+import com.androiddownload.core.preferences.DefaultQualityPreferences
 import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
@@ -148,6 +149,8 @@ class MainActivity : Activity() {
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
     private val recentDownloadsStore: RecentDownloadsStore
         get() = RecentDownloadsStore(settingsPreferences)
+    private val defaultQualityPreferences: DefaultQualityPreferences
+        get() = DefaultQualityPreferences(settingsPreferences)
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -2123,25 +2126,20 @@ class MainActivity : Activity() {
     }
 
     private fun selectedDefaultQualityOption(): DefaultQualityOption {
-        val savedValue = settingsPreferences.getString(
-            PREF_DEFAULT_YTDLP_QUALITY,
-            DEFAULT_QUALITY_ASK_VALUE
-        )
+        val savedValue = defaultQualityPreferences.load()
         return defaultQualityOptions().firstOrNull { it.preferenceValue == savedValue }
             ?: defaultQualityOptions().first()
     }
 
     private fun saveDefaultQualityOption(option: DefaultQualityOption) {
-        settingsPreferences.edit()
-            .putString(PREF_DEFAULT_YTDLP_QUALITY, option.preferenceValue)
-            .apply()
+        defaultQualityPreferences.save(option.preferenceValue)
     }
 
     private fun defaultQualityOptions(): List<DefaultQualityOption> {
         return listOf(
             DefaultQualityOption(
                 label = getString(R.string.default_quality_ask_always),
-                preferenceValue = DEFAULT_QUALITY_ASK_VALUE,
+                preferenceValue = DefaultQualityPreferences.DEFAULT_QUALITY_ASK_VALUE,
                 formatSelector = null
             )
         ) + YtDlpQualityOptions.build(this, null).map { option ->
@@ -2329,8 +2327,6 @@ class MainActivity : Activity() {
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
         private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
-        private const val PREF_DEFAULT_YTDLP_QUALITY = "default_ytdlp_quality"
-        private const val DEFAULT_QUALITY_ASK_VALUE = "ask"
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val REQUEST_DOWNLOAD_TREE = 2002
         private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
