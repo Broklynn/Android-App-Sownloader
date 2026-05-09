@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
@@ -31,7 +30,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
-import androidx.core.content.FileProvider
+import com.androiddownload.core.files.FileActionsController
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.preferences.DefaultQualityPreferences
@@ -152,6 +151,8 @@ class MainActivity : Activity() {
         get() = RecentDownloadsStore(settingsPreferences)
     private val defaultQualityPreferences: DefaultQualityPreferences
         get() = DefaultQualityPreferences(settingsPreferences)
+    private val fileActionsController: FileActionsController
+        get() = FileActionsController(this, ::showToast)
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -287,10 +288,10 @@ class MainActivity : Activity() {
                     DownloadForegroundService.retry(this, download.id)
                 },
                 onOpenClick = { download ->
-                    openCompletedDownload(download)
+                    fileActionsController.open(download)
                 },
                 onShareClick = { download ->
-                    shareCompletedDownload(download)
+                    fileActionsController.share(download)
                 },
                 onRequestShowKeyboard = ::showKeyboardForCurrentFocus,
                 onRequestHideKeyboard = ::hideKeyboard
@@ -1415,7 +1416,7 @@ class MainActivity : Activity() {
         if (download.status == DownloadStatus.COMPLETED) {
             buttons.add(
                 DarkDialogButton(getString(R.string.open)) {
-                openCompletedDownload(download)
+                fileActionsController.open(download)
                 }
             )
         }
@@ -1465,7 +1466,7 @@ class MainActivity : Activity() {
                         setTextColor(getColor(R.color.button_secondary_text))
                         setBackgroundResource(R.drawable.bg_button_secondary)
                         setOnClickListener {
-                            shareCompletedDownload(download)
+                            fileActionsController.share(download)
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -1852,7 +1853,7 @@ class MainActivity : Activity() {
                 showToast(getString(R.string.download_file_not_found))
                 return@launch
             }
-            openCompletedDownload(download)
+            fileActionsController.open(download)
         }
     }
 
@@ -2009,118 +2010,11 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
-    private fun openCompletedDownload(download: DownloadEntity) {
-        if (download.status != DownloadStatus.COMPLETED) return
-
-        val openUri = try {
-            resolveOpenUri(download)
-        } catch (exception: IllegalArgumentException) {
-            null
-        }
-
-        if (openUri == null) {
-            showToast(getString(R.string.download_file_not_found))
-            return
-        }
-
-        val mimeType = normalizeMimeType(download.mimeType)
-            ?: contentResolver.getType(openUri)
-            ?: inferMimeType(download.fileName)
-            ?: "*/*"
-
-        val viewIntent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(openUri, mimeType)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-
-        if (packageManager.queryIntentActivities(viewIntent, PackageManager.MATCH_DEFAULT_ONLY).isEmpty()) {
-            showToast(getString(R.string.download_no_app_found))
-            return
-        }
-
-        try {
-            startActivity(Intent.createChooser(viewIntent, getString(R.string.open_file_chooser)))
-        } catch (exception: ActivityNotFoundException) {
-            showToast(getString(R.string.download_no_app_found))
-        } catch (exception: RuntimeException) {
-            showToast(getString(R.string.download_open_error))
-        }
-    }
-
-    private fun shareCompletedDownload(download: DownloadEntity) {
-        if (download.status != DownloadStatus.COMPLETED) return
-
-        val shareUri = try {
-            resolveOpenUri(download)
-        } catch (exception: IllegalArgumentException) {
-            null
-        }
-
-        if (shareUri == null) {
-            showToast(getString(R.string.share_file_not_found))
-            return
-        }
-
-        val mimeType = normalizeMimeType(download.mimeType)
-            ?: contentResolver.getType(shareUri)
-            ?: inferMimeType(download.fileName)
-            ?: "application/octet-stream"
-
-        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            type = mimeType
-            putExtra(Intent.EXTRA_STREAM, shareUri)
-            clipData = ClipData.newUri(contentResolver, download.fileName, shareUri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        if (packageManager.queryIntentActivities(sendIntent, PackageManager.MATCH_DEFAULT_ONLY).isEmpty()) {
-            showToast(getString(R.string.share_no_app_found))
-            return
-        }
-
-        try {
-            startActivity(Intent.createChooser(sendIntent, getString(R.string.share_file_chooser)))
-        } catch (exception: ActivityNotFoundException) {
-            showToast(getString(R.string.share_no_app_found))
-        } catch (exception: RuntimeException) {
-            showToast(getString(R.string.share_open_error))
-        }
-    }
-
-    private fun resolveOpenUri(download: DownloadEntity): Uri? {
-        val destination = download.destinationUri?.takeIf { it.isNotBlank() } ?: return null
-        val destinationUri = Uri.parse(destination)
-
-        return when (destinationUri.scheme) {
-            "content" -> destinationUri
-            "file" -> {
-                val file = File(destinationUri.path ?: return null)
-                if (!file.exists()) return null
-                FileProvider.getUriForFile(this, fileProviderAuthority(), file)
-            }
-            null -> {
-                val file = File(destination)
-                if (!file.exists()) return null
-                FileProvider.getUriForFile(this, fileProviderAuthority(), file)
-            }
-            else -> null
-        }
-    }
-
-    private fun fileProviderAuthority(): String = "$packageName.fileprovider"
-
     private fun normalizeMimeType(mimeType: String?): String? {
         return mimeType
             ?.substringBefore(';')
             ?.trim()
             ?.takeIf { it.contains('/') }
-    }
-
-    private fun inferMimeType(fileName: String): String? {
-        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "")
-            .lowercase(Locale.US)
-            .takeIf { it.isNotBlank() }
-            ?: return null
-        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
     }
 
     private fun showToast(message: String) {
