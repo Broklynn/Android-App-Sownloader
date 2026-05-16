@@ -37,7 +37,7 @@ import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
-import com.androiddownload.core.utils.UrlValidator
+import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.request.DownloadRequestDecision
@@ -1823,7 +1823,7 @@ class MainActivity : Activity() {
     }
 
     private fun handleSharedText(intent: Intent) {
-        val sharedUrl = extractSharedUrl(
+        val sharedUrl = SharedTextUrlExtractor.extract(
             intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
         )
         if (sharedUrl == null) {
@@ -1848,18 +1848,6 @@ class MainActivity : Activity() {
             }
             fileActionsController.open(download)
         }
-    }
-
-    private fun extractSharedUrl(sharedText: String): String? {
-        val trimmedText = sharedText.trim()
-        if (UrlValidator.isValidHttpUrl(trimmedText)) {
-            return trimmedText
-        }
-
-        return SHARED_URL_PATTERN.find(trimmedText)
-            ?.value
-            ?.trimEnd('.', ',', ';', ':', ')', ']', '}', '>')
-            ?.takeIf { UrlValidator.isValidHttpUrl(it) }
     }
 
     private fun openYtDlpQualityPicker(
@@ -2035,6 +2023,5 @@ class MainActivity : Activity() {
         private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val REQUEST_DOWNLOAD_TREE = 2002
-        private val SHARED_URL_PATTERN = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
     }
 }
