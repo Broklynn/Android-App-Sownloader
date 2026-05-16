@@ -33,6 +33,7 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.preferences.DefaultQualityPreferences
 import com.androiddownload.core.preferences.RecentDownloadsStore
+import com.androiddownload.core.preferences.SettingsPreferencesStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
@@ -153,6 +154,8 @@ class MainActivity : Activity() {
         get() = RecentDownloadsStore(settingsPreferences)
     private val defaultQualityPreferences: DefaultQualityPreferences
         get() = DefaultQualityPreferences(settingsPreferences)
+    private val settingsPreferencesStore: SettingsPreferencesStore
+        get() = SettingsPreferencesStore(settingsPreferences)
     private val fileActionsController: FileActionsController
         get() = FileActionsController(this, ::showToast)
     private val qualityDialogController: QualityDialogController
@@ -1698,15 +1701,12 @@ class MainActivity : Activity() {
     }
 
     private fun toggleAutoUpdateYtDlp() {
-        val enabled = settingsPreferences.getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
-        settingsPreferences.edit()
-            .putBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, !enabled)
-            .apply()
+        settingsPreferencesStore.toggleAutoUpdateYtDlpOnYoutubeErrors()
         updateAutoUpdateYtDlpUiState()
     }
 
     private fun updateAutoUpdateYtDlpUiState() {
-        val enabled = settingsPreferences.getBoolean(PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS, true)
+        val enabled = settingsPreferencesStore.isAutoUpdateYtDlpOnYoutubeErrorsEnabled()
         settingsController.setAutoUpdateEnabled(
             isEnabled = enabled,
             enabledText = getString(R.string.auto_update_ytdlp_enabled),
@@ -1941,7 +1941,6 @@ class MainActivity : Activity() {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
-        private const val PREF_AUTO_UPDATE_YTDLP_ON_YOUTUBE_ERRORS = "auto_update_ytdlp_on_youtube_errors"
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val REQUEST_DOWNLOAD_TREE = 2002
     }
