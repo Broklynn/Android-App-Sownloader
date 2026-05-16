@@ -40,6 +40,8 @@ import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.UrlValidator
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
+import com.androiddownload.download.request.DownloadRequestDecision
+import com.androiddownload.download.request.DownloadRequestPlanner
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
@@ -155,6 +157,7 @@ class MainActivity : Activity() {
         get() = FileActionsController(this, ::showToast)
     private val qualityDialogController: QualityDialogController
         get() = QualityDialogController(this)
+    private val downloadRequestPlanner = DownloadRequestPlanner()
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -1894,29 +1897,45 @@ class MainActivity : Activity() {
         homeController: HomeController? = null,
         onError: ((String) -> Unit)? = null
     ) {
-        val url = rawUrl.trim()
-        if (!UrlValidator.isValidHttpUrl(url)) {
-            val message = getString(R.string.invalid_url)
-            if (homeController != null) {
-                homeController.showError(message)
-            } else {
-                onError?.invoke(message) ?: showToast(message)
+        val selectedDefaultQuality = selectedDefaultQualityOption()
+        when (
+            val decision = downloadRequestPlanner.plan(
+                rawUrl = rawUrl,
+                defaultQualityPreferenceValue = selectedDefaultQuality.preferenceValue,
+                defaultQualitySelector = selectedDefaultQuality.formatSelector
+            )
+        ) {
+            is DownloadRequestDecision.InvalidUrl -> {
+                val message = getString(R.string.invalid_url)
+                if (homeController != null) {
+                    homeController.showError(message)
+                } else {
+                    onError?.invoke(message) ?: showToast(message)
+                }
             }
-            return
-        }
-
-        addRecentDownloadUrl(url)
-        if (DownloadSourceClassifier.shouldUseHttpDownloader(url)) {
-            startQueuedDownload(
-                url = url,
-                qualitySelector = null,
-                homeController = homeController
-            )
-        } else {
-            handleYtDlpDownloadRequest(
-                url = url,
-                homeController = homeController
-            )
+            is DownloadRequestDecision.DirectDownload -> {
+                addRecentDownloadUrl(decision.url)
+                startQueuedDownload(
+                    url = decision.url,
+                    qualitySelector = null,
+                    homeController = homeController
+                )
+            }
+            is DownloadRequestDecision.YtDlpAskQuality -> {
+                addRecentDownloadUrl(decision.url)
+                openYtDlpQualityPicker(
+                    url = decision.url,
+                    homeController = homeController
+                )
+            }
+            is DownloadRequestDecision.YtDlpFixedQuality -> {
+                addRecentDownloadUrl(decision.url)
+                startQueuedDownload(
+                    url = decision.url,
+                    qualitySelector = decision.qualitySelector,
+                    homeController = homeController
+                )
+            }
         }
     }
 
