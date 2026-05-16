@@ -2,10 +2,13 @@ package com.androiddownload.ui.common
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -143,7 +146,7 @@ object DarkDialogFactory {
                 }
             )
             addView(
-                contentView,
+                buildScrollableContent(activity, contentView),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -221,5 +224,63 @@ object DarkDialogFactory {
         return dialog
     }
 
+    private fun buildScrollableContent(activity: Activity, contentView: View): View {
+        val maxHeight = (activity.resources.displayMetrics.heightPixels * CONTENT_MAX_HEIGHT_RATIO).toInt()
+        return if (contentView is ScrollView) {
+            MaxHeightFrameLayout(activity, maxHeight).apply {
+                addView(
+                    contentView,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+        } else {
+            MaxHeightScrollView(activity, maxHeight).apply {
+                isFillViewport = false
+                addView(
+                    contentView,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+        }
+    }
+
     private fun Activity.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private const val CONTENT_MAX_HEIGHT_RATIO = 0.62f
+
+    private class MaxHeightScrollView(
+        context: Context,
+        private val maxHeight: Int
+    ) : ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val cappedHeightMeasureSpec = capHeightMeasureSpec(heightMeasureSpec, maxHeight)
+            super.onMeasure(widthMeasureSpec, cappedHeightMeasureSpec)
+        }
+    }
+
+    private class MaxHeightFrameLayout(
+        context: Context,
+        private val maxHeight: Int
+    ) : FrameLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val cappedHeightMeasureSpec = capHeightMeasureSpec(heightMeasureSpec, maxHeight)
+            super.onMeasure(widthMeasureSpec, cappedHeightMeasureSpec)
+        }
+    }
+
+    private fun capHeightMeasureSpec(heightMeasureSpec: Int, maxHeight: Int): Int {
+        val mode = View.MeasureSpec.getMode(heightMeasureSpec)
+        val size = View.MeasureSpec.getSize(heightMeasureSpec)
+        val cappedSize = when (mode) {
+            View.MeasureSpec.UNSPECIFIED -> maxHeight
+            else -> minOf(size, maxHeight)
+        }
+        return View.MeasureSpec.makeMeasureSpec(cappedSize, View.MeasureSpec.AT_MOST)
+    }
 }
