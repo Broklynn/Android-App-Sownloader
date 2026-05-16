@@ -58,6 +58,7 @@ import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.settings.SettingsController
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1882,13 +1883,25 @@ class MainActivity : Activity() {
     ) {
         homeController?.setLoading(true)
         scope.launch {
-            val downloadId = withContext(Dispatchers.IO) {
-                app.container.queue.enqueue(url, qualitySelector)
+            var resetLoadingOnExit = true
+            try {
+                val downloadId = withContext(Dispatchers.IO) {
+                    app.container.queue.enqueue(url, qualitySelector)
+                }
+                homeController?.clear()
+                homeController?.setLoading(false)
+                resetLoadingOnExit = false
+                showDownloads()
+                DownloadForegroundService.start(this@MainActivity, downloadId)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (_: Exception) {
+                showToast(getString(R.string.download_error_unable_to_download))
+            } finally {
+                if (resetLoadingOnExit) {
+                    homeController?.setLoading(false)
+                }
             }
-            homeController?.clear()
-            homeController?.setLoading(false)
-            showDownloads()
-            DownloadForegroundService.start(this@MainActivity, downloadId)
         }
     }
 
