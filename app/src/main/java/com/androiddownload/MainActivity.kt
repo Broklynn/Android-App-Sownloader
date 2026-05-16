@@ -2000,25 +2000,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun handleYtDlpDownloadRequest(
-        url: String,
-        homeController: HomeController? = null
-    ) {
-        val defaultOption = selectedDefaultQualityOption()
-        if (defaultOption.formatSelector == null) {
-            openYtDlpQualityPicker(
-                url = url,
-                homeController = homeController
-            )
-            return
-        }
-        startQueuedDownload(
-            url = url,
-            qualitySelector = defaultOption.formatSelector,
-            homeController = homeController
-        )
-    }
-
     override fun onBackPressed() {
         if (handleBackNavigation()) {
             return
