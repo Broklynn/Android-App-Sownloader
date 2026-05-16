@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -43,6 +42,7 @@ import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.request.DownloadRequestDecision
 import com.androiddownload.download.request.DownloadRequestPlanner
 import com.androiddownload.download.service.DownloadForegroundService
+import com.androiddownload.ui.downloads.DownloadDetailsRenderer
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.common.DarkDialogButton
@@ -66,7 +66,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.DateFormat
 import java.io.File
 import java.util.Locale
 
@@ -1412,7 +1411,15 @@ class MainActivity : Activity() {
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
-        val contentView = buildDownloadDetailsView(download)
+        val contentView = DownloadDetailsRenderer(
+            context = this,
+            callbacks = DownloadDetailsRenderer.Callbacks(
+                onShare = { fileActionsController.share(it) }
+            ),
+            statusLabelProvider = ::downloadStatusLabel,
+            formatLabelProvider = ::formatLabelForDetails,
+            progressLabelProvider = ::progressLabelForDetails
+        ).buildContent(download)
         val buttons = mutableListOf(
             DarkDialogButton(getString(R.string.details_close)),
             DarkDialogButton(getString(R.string.details_copy_url), primary = true) {
@@ -1422,7 +1429,7 @@ class MainActivity : Activity() {
         if (download.status == DownloadStatus.COMPLETED) {
             buttons.add(
                 DarkDialogButton(getString(R.string.open)) {
-                fileActionsController.open(download)
+                    fileActionsController.open(download)
                 }
             )
         }
@@ -1433,78 +1440,6 @@ class MainActivity : Activity() {
             contentView = contentView,
             buttons = buttons
         )
-    }
-
-    private fun buildDownloadDetailsView(download: DownloadEntity): View {
-        val padding = (16 * resources.displayMetrics.density).toInt()
-        val textView = TextView(this).apply {
-            setTextIsSelectable(true)
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 13f
-            setPadding(0, 0, 0, padding)
-            text = buildDownloadDetailsText(download)
-        }
-
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(padding, padding, padding, padding)
-            addView(
-                ScrollView(context).apply {
-                    addView(
-                        textView,
-                        ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        )
-                    )
-                },
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            )
-
-            if (download.status == DownloadStatus.COMPLETED) {
-                addView(
-                    Button(context).apply {
-                        text = getString(R.string.details_share)
-                        setTextColor(getColor(R.color.button_secondary_text))
-                        setBackgroundResource(R.drawable.bg_button_secondary)
-                        setOnClickListener {
-                            fileActionsController.share(download)
-                        }
-                    },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = padding
-                    }
-                )
-            }
-        }
-    }
-
-    private fun buildDownloadDetailsText(download: DownloadEntity): String {
-        val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM)
-        val details = linkedMapOf(
-            getString(R.string.download_detail_file_name) to download.fileName,
-            getString(R.string.download_detail_status) to downloadStatusLabel(download.status),
-            getString(R.string.download_detail_format) to formatLabelForDetails(download),
-            getString(R.string.download_detail_source_url) to download.sourceUrl,
-            getString(R.string.download_detail_downloaded) to buildDownloadSizeText(download),
-            getString(R.string.download_detail_progress) to progressLabelForDetails(download),
-            getString(R.string.download_detail_speed) to formatSpeedForDetails(download.speed),
-            getString(R.string.download_detail_error) to (download.errorMessage?.takeIf { it.isNotBlank() } ?: getString(R.string.none)),
-            getString(R.string.download_detail_final_uri) to (download.destinationUri?.takeIf { it.isNotBlank() } ?: getString(R.string.not_available)),
-            getString(R.string.download_detail_created_at) to dateFormat.format(java.util.Date(download.createdAt)),
-            getString(R.string.download_detail_updated_at) to dateFormat.format(java.util.Date(download.updatedAt))
-        )
-
-        return details.entries.joinToString(separator = "\n\n") { (label, value) ->
-            "$label\n$value"
-        }
     }
 
     private fun formatLabelForDetails(download: DownloadEntity): String {
@@ -1524,12 +1459,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun buildDownloadSizeText(download: DownloadEntity): String {
-        val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
-        val total = FileSizeFormatter.formatBytes(download.totalBytes)
-        return "$downloaded / $total"
-    }
-
     private fun progressLabelForDetails(download: DownloadEntity): String {
         val progress = normalizedProgress(download)
         return when (download.status) {
@@ -1540,14 +1469,6 @@ class MainActivity : Activity() {
             DownloadStatus.COMPLETED -> "100% ${getString(R.string.status_completed)}"
             DownloadStatus.FAILED -> getString(R.string.status_failed)
             DownloadStatus.CANCELED -> getString(R.string.status_canceled)
-        }
-    }
-
-    private fun formatSpeedForDetails(speed: Long): String {
-        return if (speed > 0L) {
-            FileSizeFormatter.formatSpeed(speed)
-        } else {
-            getString(R.string.not_available)
         }
     }
 
