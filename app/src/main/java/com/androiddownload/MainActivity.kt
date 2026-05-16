@@ -11,7 +11,6 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Environment
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -1714,11 +1713,6 @@ class MainActivity : Activity() {
             ClipData.newPlainText(getString(R.string.diagnostics_title), YtDlpDiagnostics.formatted(this))
         )
         showToast(getString(R.string.diagnostics_copied))
-    }
-
-    private fun getPreferredDownloadDirectory(): File {
-        return getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: File(filesDir, "downloads")
     }
 
     private fun chooseDownloadLocation() {
