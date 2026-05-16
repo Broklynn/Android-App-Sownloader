@@ -17,7 +17,6 @@ import android.os.Looper
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
@@ -27,7 +26,6 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ScrollView
 import com.androiddownload.core.files.FileActionsController
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -58,6 +56,7 @@ import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListRenderer
+import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -161,6 +160,8 @@ class MainActivity : Activity() {
     private val qualityDialogController: QualityDialogController
         get() = QualityDialogController(this)
     private val downloadRequestPlanner = DownloadRequestPlanner()
+    private val diagnosticsController: DiagnosticsController
+        get() = DiagnosticsController(this, ::showToast)
     private val app: AndroidDownloadApp
         get() = application as AndroidDownloadApp
 
@@ -1602,45 +1603,7 @@ class MainActivity : Activity() {
     }
 
     private fun showDiagnosticsDialog() {
-        val diagnostics = YtDlpDiagnostics.formatted(this)
-        val textView = TextView(this).apply {
-            text = diagnostics
-            setTextIsSelectable(true)
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 13f
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }
-        DarkDialogFactory.showContentDialog(
-            activity = this,
-            title = getString(R.string.diagnostics_title),
-            contentView = ScrollView(this).apply {
-                addView(
-                    textView,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            },
-            buttons = listOf(
-                DarkDialogButton(getString(R.string.details_close)),
-                DarkDialogButton(getString(R.string.diagnostics_copy), primary = true) {
-                    copyDiagnostics()
-                },
-                DarkDialogButton(getString(R.string.diagnostics_clear)) {
-                    YtDlpDiagnostics.clear(this)
-                    showToast(getString(R.string.diagnostics_cleared))
-                }
-            )
-        )
-    }
-
-    private fun copyDiagnostics() {
-        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(
-            ClipData.newPlainText(getString(R.string.diagnostics_title), YtDlpDiagnostics.formatted(this))
-        )
-        showToast(getString(R.string.diagnostics_copied))
+        diagnosticsController.show()
     }
 
     private fun chooseDownloadLocation() {
