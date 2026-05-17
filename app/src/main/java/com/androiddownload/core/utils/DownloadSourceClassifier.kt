@@ -1,20 +1,22 @@
 package com.androiddownload.core.utils
 
-import android.net.Uri
+import java.net.URI
 import java.util.Locale
 
 object DownloadSourceClassifier {
     fun shouldUseHttpDownloader(url: String): Boolean {
-        val uri = Uri.parse(url)
-        val host = uri.host?.lowercase(Locale.US).orEmpty()
+        val uri = runCatching { URI(url) }.getOrNull()
+        val host = uri?.host?.lowercase(Locale.US).orEmpty()
         if (host.isBlank()) return true
         if (host in YTDLP_HOSTS) return false
         if (YTDLP_HOSTS.any { host.endsWith(".$it") }) return false
+        if (host in HTTP_DIRECT_HOSTS) return true
         return hasDirectFileExtension(uri)
     }
 
-    private fun hasDirectFileExtension(uri: Uri): Boolean {
-        val lastSegment = uri.lastPathSegment?.substringBefore('?')?.lowercase(Locale.US).orEmpty()
+    private fun hasDirectFileExtension(uri: URI?): Boolean {
+        val path = uri?.path.orEmpty()
+        val lastSegment = path.substringAfterLast('/').lowercase(Locale.US)
         val extension = lastSegment.substringAfterLast('.', missingDelimiterValue = "")
         return extension in DIRECT_FILE_EXTENSIONS
     }
@@ -32,6 +34,10 @@ object DownloadSourceClassifier {
         "pdf",
         "apk",
         "bin"
+    )
+
+    private val HTTP_DIRECT_HOSTS = setOf(
+        "raw.githubusercontent.com"
     )
 
     private val YTDLP_HOSTS = setOf(
