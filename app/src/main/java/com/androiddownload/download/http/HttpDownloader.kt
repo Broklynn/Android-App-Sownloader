@@ -220,11 +220,6 @@ class HttpDownloader(
                     resumeOffset = resumeOffset,
                     fallback = current.totalBytes,
                     bodyLength = contentLength
-                ) ?: throw DownloadFailureException(
-                    DownloadFailure(
-                        message = context.getString(R.string.download_missing_content_length),
-                        retryable = false
-                    )
                 )
 
                 if (resumeOffset > 0L) {
@@ -353,7 +348,7 @@ class HttpDownloader(
                         mimeType = mimeType,
                         destinationUri = savedFile.uri.toString(),
                         tempPath = null,
-                        totalBytes = if (totalBytes >= 0) totalBytes else savedFile.bytes,
+                        totalBytes = if (totalBytes > 0) totalBytes else savedFile.bytes,
                         downloadedBytes = savedFile.bytes,
                         progress = 100,
                         speed = 0,
@@ -560,19 +555,22 @@ class HttpDownloader(
         resumeOffset: Long,
         fallback: Long,
         bodyLength: Long
-    ): Long? {
+    ): Long {
         if (responseCode == 206) {
             val parsedTotal = parseContentRangeTotal(contentRange)
             if (parsedTotal != null) {
                 return parsedTotal
             }
-            if (bodyLength >= 0) {
+            if (bodyLength > 0) {
                 return resumeOffset + bodyLength
             }
-            return null
+            if (fallback > 0L) {
+                return fallback
+            }
+            return 0L
         }
 
-        if (bodyLength >= 0) {
+        if (bodyLength > 0) {
             return bodyLength
         }
 
@@ -580,7 +578,7 @@ class HttpDownloader(
             return fallback
         }
 
-        return null
+        return 0L
     }
 
     private fun parseContentRangeTotal(contentRange: String?): Long? {
