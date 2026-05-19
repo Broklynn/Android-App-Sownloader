@@ -51,6 +51,7 @@ import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
 import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.downloads.QualityDialogController
 import com.androiddownload.ui.downloads.QualityOptionUi
+import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
@@ -159,6 +160,8 @@ class MainActivity : Activity() {
         get() = FileActionsController(this, ::showToast)
     private val qualityDialogController: QualityDialogController
         get() = QualityDialogController(this)
+    private val quickDownloadSheetController: QuickDownloadSheetController
+        get() = QuickDownloadSheetController(this)
     private val downloadRequestPlanner = DownloadRequestPlanner()
     private val diagnosticsController: DiagnosticsController
         get() = DiagnosticsController(this, ::showToast)
@@ -1721,6 +1724,18 @@ class MainActivity : Activity() {
         showHome()
         homeController.setUrl(sharedUrl)
         showToast(getString(R.string.shared_link_received))
+        if (!DownloadSourceClassifier.shouldUseHttpDownloader(sharedUrl)) {
+            quickDownloadSheetController.show(
+                url = sharedUrl,
+                options = downloadQualityOptions()
+            ) { option ->
+                startQueuedDownload(
+                    url = sharedUrl,
+                    qualitySelector = option.formatSelector,
+                    homeController = homeController
+                )
+            }
+        }
     }
 
     private fun handleOpenDownloadIntent(downloadId: Long) {
