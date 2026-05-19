@@ -146,7 +146,7 @@ object DarkDialogFactory {
                 }
             )
             addView(
-                buildScrollableContent(activity, contentView),
+                buildScrollableContent(activity, contentView, buttons.size),
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -224,8 +224,12 @@ object DarkDialogFactory {
         return dialog
     }
 
-    private fun buildScrollableContent(activity: Activity, contentView: View): View {
-        val maxHeight = (activity.resources.displayMetrics.heightPixels * CONTENT_MAX_HEIGHT_RATIO).toInt()
+    private fun buildScrollableContent(activity: Activity, contentView: View, buttonCount: Int): View {
+        val stackedButtonOverflow = maxOf(buttonCount - 3, 0)
+        val reservedButtonHeight = stackedButtonOverflow * activity.dp(50)
+        val maxHeight = (
+            activity.resources.displayMetrics.heightPixels * CONTENT_MAX_HEIGHT_RATIO
+            ).toInt() - reservedButtonHeight
         return if (contentView is ScrollView) {
             MaxHeightFrameLayout(activity, maxHeight).apply {
                 addView(

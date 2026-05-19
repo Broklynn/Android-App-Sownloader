@@ -1417,9 +1417,6 @@ class MainActivity : Activity() {
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
         val contentView = DownloadDetailsRenderer(
             context = this,
-            callbacks = DownloadDetailsRenderer.Callbacks(
-                onShare = { fileActionsController.share(it) }
-            ),
             statusLabelProvider = ::downloadStatusLabel,
             formatLabelProvider = ::formatLabelForDetails,
             progressLabelProvider = ::progressLabelForDetails
@@ -1434,6 +1431,11 @@ class MainActivity : Activity() {
             buttons.add(
                 DarkDialogButton(getString(R.string.open)) {
                     fileActionsController.open(download)
+                }
+            )
+            buttons.add(
+                DarkDialogButton(getString(R.string.details_share)) {
+                    fileActionsController.share(download)
                 }
             )
         }

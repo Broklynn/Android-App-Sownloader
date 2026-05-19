@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -17,15 +16,10 @@ import java.util.Date
 
 class DownloadDetailsRenderer(
     private val context: Context,
-    private val callbacks: Callbacks,
     private val statusLabelProvider: (DownloadStatus) -> String,
     private val formatLabelProvider: (DownloadEntity) -> String,
     private val progressLabelProvider: (DownloadEntity) -> String
 ) {
-    data class Callbacks(
-        val onShare: (DownloadEntity) -> Unit
-    )
-
     fun buildContent(download: DownloadEntity): View {
         val padding = context.dp(16)
         val textView = TextView(context).apply {
@@ -55,25 +49,6 @@ class DownloadDetailsRenderer(
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
-
-            if (download.status == DownloadStatus.COMPLETED) {
-                addView(
-                    Button(context).apply {
-                        text = context.getString(R.string.details_share)
-                        setTextColor(context.getColor(R.color.button_secondary_text))
-                        setBackgroundResource(R.drawable.bg_button_secondary)
-                        setOnClickListener {
-                            callbacks.onShare(download)
-                        }
-                    },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = padding
-                    }
-                )
-            }
         }
     }
 
