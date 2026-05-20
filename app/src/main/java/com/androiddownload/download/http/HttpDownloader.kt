@@ -172,6 +172,10 @@ class HttpDownloader(
             .url(current.sourceUrl)
             .get()
 
+        HttpHeadersJsonParser.parse(current.httpHeadersJson).forEach { (name, value) ->
+            requestBuilder.header(name, value)
+        }
+
         if (resumeOffset > 0L) {
             requestBuilder.header("Range", "bytes=$resumeOffset-")
         }
