@@ -13,7 +13,7 @@ object SharedMediaPreviewParser {
         val items = if (entries != null && entries.length() > 0) {
             entries.toSharedMediaItems(originalUrl)
         } else {
-            listOf(root.toSharedMediaItem(originalUrl, index = 1))
+            listOf(root.toSharedMediaItem(originalUrl, index = 1, preferDirectUrl = false))
         }
         return SharedMediaPreview(
             originalUrl = originalUrl,
@@ -26,7 +26,7 @@ object SharedMediaPreviewParser {
         val items = mutableListOf<SharedMediaItem>()
         for (position in 0 until length()) {
             val entry = optJSONObject(position) ?: continue
-            items += entry.toSharedMediaItem(originalUrl, index = position + 1)
+            items += entry.toSharedMediaItem(originalUrl, index = position + 1, preferDirectUrl = true)
         }
         return items.ifEmpty {
             listOf(
@@ -42,10 +42,16 @@ object SharedMediaPreviewParser {
         }
     }
 
-    private fun JSONObject.toSharedMediaItem(originalUrl: String, index: Int): SharedMediaItem {
-        val entrySourceUrl = optionalString("webpage_url")
-            ?: optionalString("url")
-            ?: originalUrl
+    private fun JSONObject.toSharedMediaItem(
+        originalUrl: String,
+        index: Int,
+        preferDirectUrl: Boolean
+    ): SharedMediaItem {
+        val entrySourceUrl = if (preferDirectUrl) {
+            optionalString("url") ?: optionalString("webpage_url") ?: originalUrl
+        } else {
+            optionalString("webpage_url") ?: optionalString("url") ?: originalUrl
+        }
         return SharedMediaItem(
             id = optionalString("id")
                 ?: optionalString("display_id")

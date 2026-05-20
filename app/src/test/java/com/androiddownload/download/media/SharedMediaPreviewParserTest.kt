@@ -21,6 +21,7 @@ class SharedMediaPreviewParserTest {
                       "title": "First item",
                       "ext": "mp4",
                       "thumbnail": "https://example.com/thumb-1.jpg",
+                      "url": "https://cdn.example.com/video-1.mp4",
                       "webpage_url": "https://www.instagram.com/p/example/?img_index=1"
                     },
                     {
@@ -28,6 +29,7 @@ class SharedMediaPreviewParserTest {
                       "title": "Second item",
                       "ext": "jpg",
                       "thumbnail": "https://example.com/thumb-2.jpg",
+                      "url": "https://cdn.example.com/image-2.jpg",
                       "webpage_url": "https://www.instagram.com/p/example/?img_index=2"
                     }
                   ]
@@ -41,10 +43,36 @@ class SharedMediaPreviewParserTest {
         assertTrue(preview.hasMultipleItems)
         assertEquals(1, preview.items[0].index)
         assertEquals(2, preview.items[1].index)
-        assertEquals("https://www.instagram.com/p/example/?img_index=1", preview.items[0].sourceUrl)
-        assertEquals("https://www.instagram.com/p/example/?img_index=2", preview.items[1].sourceUrl)
+        assertEquals("https://cdn.example.com/video-1.mp4", preview.items[0].sourceUrl)
+        assertEquals("https://cdn.example.com/image-2.jpg", preview.items[1].sourceUrl)
         assertEquals("https://example.com/thumb-1.jpg", preview.items[0].thumbnailUrl)
         assertEquals("https://example.com/thumb-2.jpg", preview.items[1].thumbnailUrl)
+    }
+
+    @Test
+    fun entryWithDirectUrlAndWebpageUrlPrefersDirectMediaUrl() {
+        val preview = SharedMediaPreviewParser.parse(
+            originalUrl = "https://www.instagram.com/p/example/",
+            json = """
+                {
+                  "entries": [
+                    {
+                      "id": "video-1",
+                      "title": "Video 1",
+                      "url": "https://cdn.example.com/video-1.mp4",
+                      "webpage_url": "https://www.instagram.com/p/example/?img_index=1",
+                      "thumbnail": "https://example.com/thumb.jpg",
+                      "ext": "mp4"
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+
+        val item = preview.items.single()
+        assertEquals("https://cdn.example.com/video-1.mp4", item.sourceUrl)
+        assertEquals("https://example.com/thumb.jpg", item.thumbnailUrl)
+        assertEquals(SharedMediaType.VIDEO, item.type)
     }
 
     @Test
