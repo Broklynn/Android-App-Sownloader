@@ -7,7 +7,7 @@ import com.androiddownload.core.model.DownloadEntity
 
 @Database(
     entities = [DownloadEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(DownloadStatusConverter::class)
@@ -18,6 +18,12 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE downloads ADD COLUMN qualitySelector TEXT")
+            }
+        }
+
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloads ADD COLUMN httpHeadersJson TEXT")
             }
         }
     }

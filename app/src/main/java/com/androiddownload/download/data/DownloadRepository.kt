@@ -17,7 +17,8 @@ class DownloadRepository(
 
     suspend fun enqueue(
         sourceUrl: String,
-        qualitySelector: String? = null
+        qualitySelector: String? = null,
+        httpHeadersJson: String? = null
     ): Long {
         val now = System.currentTimeMillis()
         return dao.insert(
@@ -25,6 +26,7 @@ class DownloadRepository(
                 sourceUrl = sourceUrl,
                 fileName = FileNameUtils.guessFileName(sourceUrl),
                 qualitySelector = qualitySelector,
+                httpHeadersJson = httpHeadersJson,
                 createdAt = now,
                 updatedAt = now
             )

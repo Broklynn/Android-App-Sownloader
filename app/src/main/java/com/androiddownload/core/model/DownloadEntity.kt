@@ -20,6 +20,7 @@ data class DownloadEntity(
     val status: DownloadStatus = DownloadStatus.QUEUED,
     val errorMessage: String? = null,
     val qualitySelector: String? = null,
+    val httpHeadersJson: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
