@@ -144,6 +144,107 @@ class SharedMediaPreviewParserTest {
         assertEquals(SharedMediaType.UNKNOWN, item.type)
     }
 
+    @Test
+    fun entryHttpHeadersPreserveAllowedHeaders() {
+        val item = SharedMediaPreviewParser.parse(
+            originalUrl = "https://www.instagram.com/p/example/",
+            json = """
+                {
+                  "entries": [
+                    {
+                      "url": "https://cdn.example.com/video.mp4",
+                      "http_headers": {
+                        "User-Agent": "Mozilla/5.0",
+                        "Accept": "text/html,application/xhtml+xml",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Referer": "https://www.instagram.com/",
+                        "Sec-Fetch-Mode": "navigate"
+                      }
+                    }
+                  ]
+                }
+            """.trimIndent()
+        ).items.single()
+
+        assertEquals("Mozilla/5.0", item.httpHeaders["User-Agent"])
+        assertEquals("text/html,application/xhtml+xml", item.httpHeaders["Accept"])
+        assertEquals("en-US,en;q=0.9", item.httpHeaders["Accept-Language"])
+        assertEquals("https://www.instagram.com/", item.httpHeaders["Referer"])
+        assertEquals("navigate", item.httpHeaders["Sec-Fetch-Mode"])
+        assertEquals(5, item.httpHeaders.size)
+    }
+
+    @Test
+    fun entryHttpHeadersDiscardSensitiveAndBlockedHeaders() {
+        val item = SharedMediaPreviewParser.parse(
+            originalUrl = "https://www.instagram.com/p/example/",
+            json = """
+                {
+                  "entries": [
+                    {
+                      "url": "https://cdn.example.com/video.mp4",
+                      "http_headers": {
+                        "Cookie": "sessionid=secret",
+                        "Authorization": "Bearer secret",
+                        "X-CSRFToken": "secret",
+                        "X-IG-App-ID": "secret",
+                        "Range": "bytes=0-",
+                        "Host": "cdn.example.com",
+                        "Content-Length": "10",
+                        "Accept": "video/mp4"
+                      }
+                    }
+                  ]
+                }
+            """.trimIndent()
+        ).items.single()
+
+        assertFalse(item.httpHeaders.containsKey("Cookie"))
+        assertFalse(item.httpHeaders.containsKey("Authorization"))
+        assertFalse(item.httpHeaders.containsKey("X-CSRFToken"))
+        assertFalse(item.httpHeaders.containsKey("X-IG-App-ID"))
+        assertFalse(item.httpHeaders.containsKey("Range"))
+        assertFalse(item.httpHeaders.containsKey("Host"))
+        assertFalse(item.httpHeaders.containsKey("Content-Length"))
+        assertEquals(mapOf("Accept" to "video/mp4"), item.httpHeaders)
+    }
+
+    @Test
+    fun entryWithoutHttpHeadersUsesEmptyHeaders() {
+        val item = SharedMediaPreviewParser.parse(
+            originalUrl = "https://www.instagram.com/p/example/",
+            json = """{"entries":[{"url":"https://cdn.example.com/video.mp4"}]}"""
+        ).items.single()
+
+        assertTrue(item.httpHeaders.isEmpty())
+    }
+
+    @Test
+    fun singleItemRootHttpHeadersAreMapped() {
+        val item = SharedMediaPreviewParser.parse(
+            originalUrl = "https://www.instagram.com/reel/example/",
+            json = """
+                {
+                  "id": "single-video",
+                  "webpage_url": "https://www.instagram.com/reel/example/",
+                  "http_headers": {
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": "https://www.instagram.com/",
+                    "Cookie": "sessionid=secret"
+                  }
+                }
+            """.trimIndent()
+        ).items.single()
+
+        assertEquals(
+            mapOf(
+                "User-Agent" to "Mozilla/5.0",
+                "Referer" to "https://www.instagram.com/"
+            ),
+            item.httpHeaders
+        )
+    }
+
     private fun parseFirstItemType(json: String): SharedMediaType {
         return SharedMediaPreviewParser.parse(
             originalUrl = "https://www.instagram.com/p/example/",

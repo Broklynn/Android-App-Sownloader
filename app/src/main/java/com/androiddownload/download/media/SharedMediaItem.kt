@@ -6,7 +6,8 @@ data class SharedMediaItem(
     val index: Int,
     val type: SharedMediaType,
     val thumbnailUrl: String?,
-    val sourceUrl: String
+    val sourceUrl: String,
+    val httpHeaders: Map<String, String> = emptyMap()
 )
 
 enum class SharedMediaType {
