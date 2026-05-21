@@ -32,6 +32,7 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.preferences.DefaultQualityPreferences
 import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.preferences.SettingsPreferencesStore
+import com.androiddownload.core.utils.ClipboardUrlReader
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
@@ -147,6 +148,7 @@ class MainActivity : Activity() {
     private var ytDlpUpdateMessage: String? = null
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var currentScreen = PrimaryScreen.HOME
+    private var lastClipboardUrlPrompted: String? = null
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private val settingsPreferences: SharedPreferences
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
@@ -371,12 +373,14 @@ class MainActivity : Activity() {
         renderRecentDownloads()
         showHome()
         handleIntent(intent)
+        maybeShowClipboardUrlPrompt(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
+        maybeShowClipboardUrlPrompt(intent)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -1741,6 +1745,48 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun maybeShowClipboardUrlPrompt(intent: Intent?) {
+        if (!isLauncherIntent(intent)) return
+
+        window.decorView.post {
+            if (isFinishing || isDestroyed) return@post
+            val clipboardUrl = ClipboardUrlReader(this).readUrl() ?: return@post
+            if (clipboardUrl == lastClipboardUrlPrompted) return@post
+
+            lastClipboardUrlPrompted = clipboardUrl
+            showClipboardUrlDialog(clipboardUrl)
+        }
+    }
+
+    private fun showClipboardUrlDialog(url: String) {
+        DarkDialogFactory.showMessageDialog(
+            activity = this,
+            title = getString(R.string.clipboard_url_title),
+            message = buildClipboardUrlMessage(url),
+            buttons = listOf(
+                DarkDialogButton(getString(R.string.clipboard_url_ignore)),
+                DarkDialogButton(getString(R.string.clipboard_url_use), primary = true) {
+                    showHome()
+                    homeController.setUrl(url)
+                }
+            )
+        )
+    }
+
+    private fun buildClipboardUrlMessage(url: String): String {
+        val displayUrl = if (url.length > CLIPBOARD_URL_PREVIEW_MAX_LENGTH) {
+            url.take(CLIPBOARD_URL_PREVIEW_MAX_LENGTH - 1) + "..."
+        } else {
+            url
+        }
+        return "${getString(R.string.clipboard_url_message)}\n\n$displayUrl"
+    }
+
+    private fun isLauncherIntent(intent: Intent?): Boolean {
+        return intent?.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_LAUNCHER)
+    }
+
     private fun handleSharedText(intent: Intent) {
         val sharedUrl = SharedTextUrlExtractor.extract(
             intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
@@ -1952,6 +1998,7 @@ class MainActivity : Activity() {
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
         private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
+        private const val CLIPBOARD_URL_PREVIEW_MAX_LENGTH = 96
         private const val REQUEST_DOWNLOAD_TREE = 2002
     }
 }

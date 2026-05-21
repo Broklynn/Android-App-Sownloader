@@ -9,6 +9,10 @@
     <string name="settings_title">Configurações</string>
     <string name="url_hint">Cole uma URL ou link de vídeo</string>
     <string name="shared_link_received">Link recebido. Escolha como deseja baixar.</string>
+    <string name="clipboard_url_title">Link copiado encontrado</string>
+    <string name="clipboard_url_message">Encontramos um link na área de transferência. Deseja usar este link?</string>
+    <string name="clipboard_url_use">Usar link</string>
+    <string name="clipboard_url_ignore">Ignorar</string>
     <string name="download_interrupted_resume">Download interrompido. Toque em Retomar.</string>
     <string name="download_interrupted_retry">Download interrompido. Toque em Tentar novamente.</string>
     <string name="clear_finished_downloads">Limpar</string>
