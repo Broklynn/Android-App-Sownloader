@@ -300,7 +300,7 @@ class MainActivity : Activity() {
                     DownloadForegroundService.retry(this, download.id)
                 },
                 onOpenClick = { download ->
-                    fileActionsController.open(download)
+                    openDownload(download)
                 },
                 onShareClick = { download ->
                     fileActionsController.share(download)
@@ -1433,7 +1433,7 @@ class MainActivity : Activity() {
         if (download.status == DownloadStatus.COMPLETED) {
             buttons.add(
                 DarkDialogButton(getString(R.string.open)) {
-                    fileActionsController.open(download)
+                    openDownload(download)
                 }
             )
             buttons.add(
@@ -1487,6 +1487,36 @@ class MainActivity : Activity() {
             ClipData.newPlainText(getString(R.string.details_copy_url), download.sourceUrl)
         )
         showToast(getString(R.string.url_copied))
+    }
+
+    private fun openDownload(download: DownloadEntity) {
+        if (tryOpenInInternalPlayer(download)) return
+        fileActionsController.open(download)
+    }
+
+    private fun tryOpenInInternalPlayer(download: DownloadEntity): Boolean {
+        val category = internalPlayerCategoryFor(download) ?: return false
+        val targetIndex = currentDownloads
+            .filter { it.matchesPlayerCategory(category) }
+            .indexOfFirst { it.id == download.id }
+        if (targetIndex < 0) return false
+
+        if (playerCategory != category) {
+            pauseCurrentPlayback()
+            stopCurrentPlayback(clearSelection = true)
+            playerCategory = category
+        }
+        showPlayer()
+        startPlaybackAt(targetIndex)
+        return true
+    }
+
+    private fun internalPlayerCategoryFor(download: DownloadEntity): PlayerCategory? {
+        return when {
+            download.matchesPlayerCategory(PlayerCategory.MUSIC) -> PlayerCategory.MUSIC
+            download.matchesPlayerCategory(PlayerCategory.VIDEO) -> PlayerCategory.VIDEO
+            else -> null
+        }
     }
 
     private fun clearFinishedDownloads() {
