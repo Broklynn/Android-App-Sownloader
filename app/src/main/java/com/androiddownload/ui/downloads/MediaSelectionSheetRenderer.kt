@@ -7,6 +7,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -27,6 +29,7 @@ class MediaSelectionSheetRenderer(
     private var items: List<SharedMediaItem> = emptyList()
     private val selectedIndexes = linkedSetOf<Int>()
     private val itemRows = mutableMapOf<Int, LinearLayout>()
+    private val thumbnailLoader = MediaThumbnailLoader()
     private lateinit var selectedButton: Button
 
     fun build(
@@ -50,6 +53,13 @@ class MediaSelectionSheetRenderer(
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.bg_bottom_sheet_surface)
             setPadding(activity.dp(20), activity.dp(10), activity.dp(20), activity.dp(20))
+            addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) = Unit
+
+                override fun onViewDetachedFromWindow(view: View) {
+                    thumbnailLoader.cancel()
+                }
+            })
 
             addView(buildHandle())
             addView(buildHeader(callbacks.onCancel))
@@ -155,38 +165,81 @@ class MediaSelectionSheetRenderer(
 
     private fun buildItemRow(item: SharedMediaItem): LinearLayout {
         return LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(activity.dp(14), 0, activity.dp(14), 0)
+            setPadding(activity.dp(10), 0, activity.dp(14), 0)
             setBackgroundResource(R.drawable.bg_dialog_option)
             isClickable = true
             isFocusable = true
 
+            addView(buildThumbnail(item), thumbnailParams())
             addView(
-                TextView(activity).apply {
-                    text = "${item.type.displayLabel()} ${item.index}"
-                    setTextColor(activity.getColor(R.color.brand))
-                    textSize = 12f
-                    typeface = Typeface.DEFAULT_BOLD
-                    includeFontPadding = false
-                }
-            )
-            addView(
-                TextView(activity).apply {
-                    text = item.title
-                    setTextColor(activity.getColor(R.color.text_primary))
-                    textSize = 15f
-                    typeface = Typeface.DEFAULT_BOLD
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                    setPadding(0, activity.dp(4), 0, 0)
-                }
+                LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        TextView(activity).apply {
+                            text = "${item.type.displayLabel()} ${item.index}"
+                            setTextColor(activity.getColor(R.color.brand))
+                            textSize = 12f
+                            typeface = Typeface.DEFAULT_BOLD
+                            includeFontPadding = false
+                        }
+                    )
+                    addView(
+                        TextView(activity).apply {
+                            text = item.title
+                            setTextColor(activity.getColor(R.color.text_primary))
+                            textSize = 15f
+                            typeface = Typeface.DEFAULT_BOLD
+                            maxLines = 2
+                            ellipsize = TextUtils.TruncateAt.END
+                            setPadding(0, activity.dp(4), 0, 0)
+                        }
+                    )
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             )
 
             setOnClickListener {
                 updateSelection(item, selected = !selectedIndexes.contains(item.index))
             }
             itemRows[item.index] = this
+        }
+    }
+
+    private fun buildThumbnail(item: SharedMediaItem): View {
+        val imageView = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            visibility = View.INVISIBLE
+        }
+        val placeholder = TextView(activity).apply {
+            text = item.type.placeholderText()
+            gravity = Gravity.CENTER
+            setTextColor(activity.getColor(R.color.text_primary))
+            textSize = if (item.type == SharedMediaType.IMAGE) 12f else 22f
+            typeface = Typeface.DEFAULT_BOLD
+            setBackgroundResource(R.drawable.bg_media_art_placeholder)
+        }
+
+        return FrameLayout(activity).apply {
+            addView(
+                placeholder,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                imageView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            thumbnailLoader.load(item.thumbnailUrl, imageView) {
+                imageView.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -264,18 +317,33 @@ class MediaSelectionSheetRenderer(
     private fun itemRowParams(): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            activity.dp(68)
+            activity.dp(92)
         ).apply {
             topMargin = activity.dp(8)
         }
     }
 
+    private fun thumbnailParams(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(activity.dp(72), activity.dp(72)).apply {
+            rightMargin = activity.dp(12)
+        }
+    }
+
     private fun SharedMediaType.displayLabel(): String {
         return when (this) {
-            SharedMediaType.VIDEO -> "Video"
+            SharedMediaType.VIDEO -> "Vídeo"
             SharedMediaType.AUDIO -> "Audio"
             SharedMediaType.IMAGE -> "Imagem"
-            SharedMediaType.UNKNOWN -> "Desconhecido"
+            SharedMediaType.UNKNOWN -> "Mídia"
+        }
+    }
+
+    private fun SharedMediaType.placeholderText(): String {
+        return when (this) {
+            SharedMediaType.VIDEO -> "▶"
+            SharedMediaType.AUDIO -> "♪"
+            SharedMediaType.IMAGE -> "IMG"
+            SharedMediaType.UNKNOWN -> "?"
         }
     }
 
