@@ -14,6 +14,8 @@ import com.androiddownload.download.media.SharedMediaPreview
 import com.androiddownload.download.media.SharedMediaPreviewExtractor
 import com.androiddownload.download.media.SharedMediaType
 import com.androiddownload.download.service.DownloadForegroundService
+import com.androiddownload.ui.common.DarkDialogButton
+import com.androiddownload.ui.common.DarkDialogFactory
 import com.androiddownload.ui.downloads.MediaSelectionSheetController
 import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.downloads.QuickDownloadSheetController
@@ -92,12 +94,7 @@ class QuickShareDownloadActivity : Activity() {
             try {
                 val preview = extractInstagramPreview(url)
                 if (!preview.hasDownloadableInstagramItems()) {
-                    Toast.makeText(
-                        this@QuickShareDownloadActivity,
-                        "Nenhuma midia encontrada neste post.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    finish()
+                    showNoDownloadableMediaDialog()
                     return@launch
                 }
                 showMediaSelection(preview)
@@ -111,6 +108,23 @@ class QuickShareDownloadActivity : Activity() {
                 ).show()
                 finish()
             }
+        }
+    }
+
+    private fun showNoDownloadableMediaDialog() {
+        DarkDialogFactory.showMessageDialog(
+            activity = this,
+            title = "Nenhuma mídia encontrada",
+            message = "Não conseguimos encontrar vídeos ou imagens baixáveis neste post. Alguns posts do Instagram podem não expor a mídia publicamente ou podem exigir login.",
+            buttons = listOf(
+                DarkDialogButton(
+                    label = "Entendi",
+                    primary = true,
+                    onClick = { finish() }
+                )
+            )
+        ).setOnCancelListener {
+            finish()
         }
     }
 
