@@ -1,6 +1,7 @@
 package com.androiddownload.ui.downloads
 
 import android.app.Activity
+import android.graphics.Matrix
 import android.graphics.Typeface
 import android.text.TextUtils
 import android.view.Gravity
@@ -16,6 +17,7 @@ import com.androiddownload.R
 import com.androiddownload.download.media.SharedMediaItem
 import com.androiddownload.download.media.SharedMediaPreview
 import com.androiddownload.download.media.SharedMediaType
+import kotlin.math.max
 
 class MediaSelectionSheetRenderer(
     private val activity: Activity
@@ -28,9 +30,7 @@ class MediaSelectionSheetRenderer(
 
     private data class ItemRowViews(
         val container: LinearLayout,
-        val label: TextView,
         val title: TextView,
-        val description: TextView,
         val check: TextView
     )
 
@@ -189,18 +189,16 @@ class MediaSelectionSheetRenderer(
             addView(
                 GridLayout(activity).apply {
                     columnCount = GRID_COLUMNS
-                    items.forEach { item ->
-                        addView(buildItemCard(item), gridItemParams())
+                    items.forEachIndexed { position, item ->
+                        addView(buildItemCard(item, position + 1), gridItemParams())
                     }
                 }
             )
         }
     }
 
-    private fun buildItemCard(item: SharedMediaItem): LinearLayout {
-        lateinit var labelView: TextView
+    private fun buildItemCard(item: SharedMediaItem, displayIndex: Int): LinearLayout {
         lateinit var titleView: TextView
-        lateinit var descriptionView: TextView
         val checkView = buildSelectionIndicator()
 
         return LinearLayout(activity).apply {
@@ -211,10 +209,8 @@ class MediaSelectionSheetRenderer(
             isFocusable = true
 
             addView(buildThumbnail(item, checkView), thumbnailParams())
-            addView(buildItemTexts(item) { label, title, description ->
-                labelView = label
+            addView(buildItemTitle(item, displayIndex) { title ->
                 titleView = title
-                descriptionView = description
             }, textBlockParams())
 
             setOnClickListener {
@@ -222,60 +218,40 @@ class MediaSelectionSheetRenderer(
             }
             itemRows[item.index] = ItemRowViews(
                 container = this,
-                label = labelView,
                 title = titleView,
-                description = descriptionView,
                 check = checkView
             )
         }
     }
 
-    private fun buildItemTexts(
+    private fun buildItemTitle(
         item: SharedMediaItem,
-        capture: (TextView, TextView, TextView) -> Unit
+        displayIndex: Int,
+        capture: (TextView) -> Unit
     ): View {
-        lateinit var labelView: TextView
         lateinit var titleView: TextView
-        lateinit var descriptionView: TextView
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, activity.dp(10), 0, 0)
-            labelView = TextView(activity).apply {
-                text = item.primaryTitle()
-                setTextColor(activity.getColor(R.color.brand))
-                textSize = 13f
-                typeface = Typeface.DEFAULT_BOLD
-                includeFontPadding = false
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-            }
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, activity.dp(12), 0, 0)
             titleView = TextView(activity).apply {
-                text = item.secondaryTitle()
+                text = item.displayTitle(displayIndex)
                 setTextColor(activity.getColor(R.color.text_primary))
-                textSize = 13f
+                textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                setPadding(0, activity.dp(4), 0, 0)
+                includeFontPadding = false
             }
-            descriptionView = TextView(activity).apply {
-                text = item.type.displayLabel()
-                setTextColor(activity.getColor(R.color.text_muted))
-                textSize = 11f
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                setPadding(0, activity.dp(3), 0, 0)
-            }
-            addView(labelView)
             addView(titleView)
-            addView(descriptionView)
-            capture(labelView, titleView, descriptionView)
+            capture(titleView)
         }
     }
 
     private fun buildThumbnail(item: SharedMediaItem, checkView: TextView): View {
         val imageView = ImageView(activity).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.MATRIX
+            setBackgroundResource(R.drawable.bg_media_selection_thumbnail)
             visibility = View.INVISIBLE
         }
         val placeholder = TextView(activity).apply {
@@ -287,14 +263,35 @@ class MediaSelectionSheetRenderer(
         }
 
         return FrameLayout(activity).apply {
-            setBackgroundResource(R.drawable.bg_media_art_placeholder)
+            setBackgroundResource(R.drawable.bg_media_selection_thumbnail)
             clipToOutline = true
             addView(placeholder, matchParentFrameParams())
             addView(imageView, matchParentFrameParams())
             addView(checkView, checkOverlayParams())
             thumbnailLoader.load(item.thumbnailUrl, imageView) {
+                imageView.post { applyThumbnailCrop(imageView) }
                 imageView.visibility = View.VISIBLE
             }
+        }
+    }
+
+    private fun applyThumbnailCrop(imageView: ImageView) {
+        val drawable = imageView.drawable ?: return
+        val drawableWidth = drawable.intrinsicWidth.takeIf { it > 0 } ?: return
+        val drawableHeight = drawable.intrinsicHeight.takeIf { it > 0 } ?: return
+        val viewWidth = imageView.width.takeIf { it > 0 } ?: return
+        val viewHeight = imageView.height.takeIf { it > 0 } ?: return
+
+        val scale = max(
+            viewWidth.toFloat() / drawableWidth.toFloat(),
+            viewHeight.toFloat() / drawableHeight.toFloat()
+        ) * THUMBNAIL_ZOOM
+        val translateX = (viewWidth - drawableWidth * scale) * 0.5f
+        val translateY = (viewHeight - drawableHeight * scale) * 0.5f
+
+        imageView.imageMatrix = Matrix().apply {
+            setScale(scale, scale)
+            postTranslate(translateX, translateY)
         }
     }
 
@@ -333,9 +330,7 @@ class MediaSelectionSheetRenderer(
         row.container.setBackgroundResource(
             if (selected) R.drawable.bg_media_selection_item_selected else R.drawable.bg_media_selection_item
         )
-        row.label.setTextColor(activity.getColor(if (selected) R.color.text_primary else R.color.brand))
         row.title.setTextColor(activity.getColor(R.color.text_primary))
-        row.description.setTextColor(activity.getColor(if (selected) R.color.text_secondary else R.color.text_muted))
         row.check.apply {
             text = if (selected) "\u2713" else ""
             setBackgroundResource(
@@ -375,7 +370,7 @@ class MediaSelectionSheetRenderer(
     private fun gridItemParams(): GridLayout.LayoutParams {
         return GridLayout.LayoutParams().apply {
             width = 0
-            height = activity.dp(186)
+            height = activity.dp(178)
             columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
             setMargins(activity.dp(4), activity.dp(4), activity.dp(4), activity.dp(8))
         }
@@ -384,7 +379,7 @@ class MediaSelectionSheetRenderer(
     private fun thumbnailParams(): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            activity.dp(96)
+            activity.dp(124)
         )
     }
 
@@ -422,12 +417,8 @@ class MediaSelectionSheetRenderer(
         )
     }
 
-    private fun SharedMediaItem.primaryTitle(): String {
-        return "${type.displayLabel()} $index"
-    }
-
-    private fun SharedMediaItem.secondaryTitle(): String {
-        return title.takeIf { it.isNotBlank() } ?: "M\u00eddia deste post"
+    private fun SharedMediaItem.displayTitle(displayIndex: Int): String {
+        return "${type.displayLabel()} $displayIndex"
     }
 
     private fun SharedMediaType.displayLabel(): String {
@@ -452,5 +443,6 @@ class MediaSelectionSheetRenderer(
 
     private companion object {
         const val GRID_COLUMNS = 2
+        const val THUMBNAIL_ZOOM = 1.55f
     }
 }
