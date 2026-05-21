@@ -330,7 +330,10 @@ class YtDlpDownloader(
                     error = metadata?.title
                 )
             }
-            val selector = current.qualitySelector.orEmpty()
+            val selector = YtDlpQualitySelectorResolver.resolve(
+                url = current.sourceUrl,
+                selectedSelector = current.qualitySelector
+            ).orEmpty()
             val metadataExt = normalizeExtension(metadata?.ext)
             val attempts = buildAttempts(current.sourceUrl, selector)
             YtDlpDiagnostics.record(
