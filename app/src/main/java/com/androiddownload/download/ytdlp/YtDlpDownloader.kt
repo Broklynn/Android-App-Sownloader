@@ -462,7 +462,7 @@ class YtDlpDownloader(
                         )
                         return@withContext
                     }
-                    if (allowAutoUpdateRetry && shouldAutoUpdateAndRetry(current, failure)) {
+                    if (allowAutoUpdateRetry && shouldAutoUpdateAndRetry(failure)) {
                         val updated = runAutoUpdateIfAllowed()
                         YtDlpDiagnostics.record(
                             context = context,
@@ -1161,10 +1161,9 @@ class YtDlpDownloader(
         }
     }
 
-    private fun shouldAutoUpdateAndRetry(current: DownloadEntity, exception: Exception): Boolean {
-        if (!isYoutubeUrl(current.sourceUrl)) return false
+    private fun shouldAutoUpdateAndRetry(exception: Exception): Boolean {
         if (!isAutoUpdateEnabled()) return false
-        return DownloadErrorFormatter.isYoutubeAutoUpdateRecoverable(exception.message)
+        return DownloadErrorFormatter.isYtDlpAutoUpdateRecoverable(exception.message)
     }
 
     private fun isAutoUpdateEnabled(): Boolean {

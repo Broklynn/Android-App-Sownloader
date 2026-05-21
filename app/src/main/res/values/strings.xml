@@ -123,6 +123,7 @@
     <string name="download_mp3_error">Não foi possível converter para MP3. Verifique o ffmpeg ou tente baixar o áudio original.</string>
     <string name="download_error_youtube_verification">O YouTube pediu verificação. Atualize o yt-dlp ou tente outro vídeo.</string>
     <string name="download_error_youtube_temporary_block">O YouTube bloqueou temporariamente este download.</string>
+    <string name="download_error_ytdlp_update_recommended">Falha ao baixar. O yt-dlp pode estar desatualizado. Tente atualizar nas configurações.</string>
     <string name="download_error_access_denied">Acesso negado pelo servidor.</string>
     <string name="download_error_video_unavailable">Vídeo indisponível.</string>
     <string name="download_error_unable_to_download">Não foi possível baixar este conteúdo.</string>

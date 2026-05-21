@@ -17,6 +17,7 @@ object DownloadErrorFormatter {
         YOUTUBE_VERIFICATION,
         YOUTUBE_TEMPORARY_BLOCK,
         YOUTUBE_UNAVAILABLE,
+        YTDLP_UPDATE_RECOMMENDED,
         UNABLE_TO_DOWNLOAD,
         GENERIC
     }
@@ -68,6 +69,7 @@ object DownloadErrorFormatter {
                 ErrorKind.YOUTUBE_TEMPORARY_BLOCK
             }
             "video unavailable" in normalized -> ErrorKind.YOUTUBE_UNAVAILABLE
+            isKnownYtDlpExtractorUpdateError(normalized) -> ErrorKind.YTDLP_UPDATE_RECOMMENDED
             "unable to download" in normalized -> ErrorKind.UNABLE_TO_DOWNLOAD
             else -> ErrorKind.GENERIC
         }
@@ -86,6 +88,7 @@ object DownloadErrorFormatter {
             ErrorKind.YOUTUBE_VERIFICATION -> context.getString(R.string.download_error_youtube_verification)
             ErrorKind.YOUTUBE_TEMPORARY_BLOCK -> context.getString(R.string.download_error_youtube_temporary_block)
             ErrorKind.YOUTUBE_UNAVAILABLE -> context.getString(R.string.download_error_video_unavailable)
+            ErrorKind.YTDLP_UPDATE_RECOMMENDED -> context.getString(R.string.download_error_ytdlp_update_recommended)
             ErrorKind.UNABLE_TO_DOWNLOAD -> context.getString(R.string.download_error_unable_to_download)
             ErrorKind.GENERIC -> context.getString(R.string.download_error_generic_short)
         }
@@ -104,6 +107,7 @@ object DownloadErrorFormatter {
             ErrorKind.SERVER_UNSTABLE,
             ErrorKind.CONNECTION_INTERRUPTED,
             ErrorKind.YOUTUBE_UNAVAILABLE,
+            ErrorKind.YTDLP_UPDATE_RECOMMENDED,
             ErrorKind.UNABLE_TO_DOWNLOAD,
             ErrorKind.GENERIC -> false
         }
@@ -122,17 +126,23 @@ object DownloadErrorFormatter {
             ErrorKind.SERVER_UNSTABLE,
             ErrorKind.CONNECTION_INTERRUPTED,
             ErrorKind.YOUTUBE_UNAVAILABLE,
+            ErrorKind.YTDLP_UPDATE_RECOMMENDED,
             ErrorKind.UNABLE_TO_DOWNLOAD,
             ErrorKind.GENERIC -> false
         }
     }
 
     fun isYoutubeAutoUpdateRecoverable(errorMessage: String?): Boolean {
+        return isYtDlpAutoUpdateRecoverable(errorMessage)
+    }
+
+    fun isYtDlpAutoUpdateRecoverable(errorMessage: String?): Boolean {
         val normalized = errorMessage.orEmpty().lowercase(Locale.US)
         return classify(normalized) == ErrorKind.YOUTUBE_VERIFICATION ||
             "http error 403" in normalized ||
             "http 403" in normalized ||
-            "sabr" in normalized
+            "sabr" in normalized ||
+            isKnownYtDlpExtractorUpdateError(normalized)
     }
 
     fun isTemporaryNetworkError(errorMessage: String?): Boolean {
@@ -148,8 +158,27 @@ object DownloadErrorFormatter {
             ErrorKind.YOUTUBE_VERIFICATION,
             ErrorKind.YOUTUBE_TEMPORARY_BLOCK,
             ErrorKind.YOUTUBE_UNAVAILABLE,
+            ErrorKind.YTDLP_UPDATE_RECOMMENDED,
             ErrorKind.UNABLE_TO_DOWNLOAD,
             ErrorKind.GENERIC -> false
         }
+    }
+
+    private fun isKnownYtDlpExtractorUpdateError(normalizedMessage: String): Boolean {
+        return "your yt-dlp version" in normalizedMessage ||
+            "older than 90 days" in normalizedMessage ||
+            "confirm you are on the latest version" in normalizedMessage ||
+            (
+                "[tiktok]" in normalizedMessage &&
+                    "unable to extract webpage video data" in normalizedMessage
+                ) ||
+            (
+                "[tiktok]" in normalizedMessage &&
+                    "extractor is attempting impersonation" in normalizedMessage
+                ) ||
+            (
+                "[tiktok]" in normalizedMessage &&
+                    "no impersonate target is available" in normalizedMessage
+                )
     }
 }
