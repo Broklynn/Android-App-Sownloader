@@ -253,7 +253,8 @@ class HttpDownloader(
                 val fileName = resolveDownloadFileName(
                     url = response.request.url.toString(),
                     contentDisposition = response.header("Content-Disposition"),
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    suggestedFileName = current.fileName
                 )
                 val displayFileName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(fileName), mimeType)
 
@@ -526,14 +527,20 @@ class HttpDownloader(
     private fun resolveDownloadFileName(
         url: String,
         contentDisposition: String?,
-        mimeType: String?
+        mimeType: String?,
+        suggestedFileName: String?
     ): String {
         val fromDisposition = contentDisposition
             ?.takeIf { it.isNotBlank() }
             ?.let { FileNameUtils.guessFileName(url, it, mimeType) }
 
         val fromUrl = FileNameUtils.guessFileName(url, null, null)
-        val preferred = fromDisposition ?: fromUrl
+        val suggested = suggestedFileName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { FileNameUtils.sanitize(it) }
+            ?.takeIf { it != fromUrl }
+        val preferred = suggested ?: fromDisposition ?: fromUrl
         return FileNameUtils.ensureExtension(preferred, mimeType)
     }
 

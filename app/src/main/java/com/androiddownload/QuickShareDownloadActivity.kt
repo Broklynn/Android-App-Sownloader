@@ -124,13 +124,13 @@ class QuickShareDownloadActivity : Activity() {
         mediaSelectionSheetController.show(
             preview = preview,
             onDownloadSelected = { selectedItems ->
-                startSelectedMediaDownloads(selectedItems)
+                startSelectedMediaDownloads(preview, selectedItems)
             },
             onCanceled = { finish() }
         )
     }
 
-    private fun startSelectedMediaDownloads(items: List<SharedMediaItem>) {
+    private fun startSelectedMediaDownloads(preview: SharedMediaPreview, items: List<SharedMediaItem>) {
         if (items.isEmpty()) {
             finish()
             return
@@ -142,7 +142,7 @@ class QuickShareDownloadActivity : Activity() {
                     SharedMediaDownloadCoordinator(
                         context = this@QuickShareDownloadActivity,
                         queue = app.container.queue
-                    ).enqueueAndStart(items, qualitySelector = null)
+                    ).enqueueAndStart(items, qualitySelector = null, preview = preview)
                 }
                 Toast.makeText(
                     this@QuickShareDownloadActivity,

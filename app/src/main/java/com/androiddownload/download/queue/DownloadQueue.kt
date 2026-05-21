@@ -8,8 +8,9 @@ class DownloadQueue(
     suspend fun enqueue(
         sourceUrl: String,
         qualitySelector: String? = null,
-        httpHeadersJson: String? = null
+        httpHeadersJson: String? = null,
+        suggestedFileName: String? = null
     ): Long {
-        return repository.enqueue(sourceUrl, qualitySelector, httpHeadersJson)
+        return repository.enqueue(sourceUrl, qualitySelector, httpHeadersJson, suggestedFileName)
     }
 }

@@ -18,13 +18,19 @@ class DownloadRepository(
     suspend fun enqueue(
         sourceUrl: String,
         qualitySelector: String? = null,
-        httpHeadersJson: String? = null
+        httpHeadersJson: String? = null,
+        suggestedFileName: String? = null
     ): Long {
         val now = System.currentTimeMillis()
+        val fileName = suggestedFileName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { FileNameUtils.sanitize(it) }
+            ?: FileNameUtils.guessFileName(sourceUrl)
         return dao.insert(
             DownloadEntity(
                 sourceUrl = sourceUrl,
-                fileName = FileNameUtils.guessFileName(sourceUrl),
+                fileName = fileName,
                 qualitySelector = qualitySelector,
                 httpHeadersJson = httpHeadersJson,
                 createdAt = now,

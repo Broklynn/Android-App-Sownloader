@@ -14,7 +14,8 @@ class SharedMediaDownloadCoordinator(
 
     suspend fun enqueueSelected(
         items: List<SharedMediaItem>,
-        qualitySelector: String? = null
+        qualitySelector: String? = null,
+        preview: SharedMediaPreview? = null
     ): List<Long> {
         if (items.isEmpty()) return emptyList()
 
@@ -22,7 +23,9 @@ class SharedMediaDownloadCoordinator(
             queue.enqueue(
                 sourceUrl = item.sourceUrl,
                 qualitySelector = item.qualitySelectorForDownload(qualitySelector),
-                httpHeadersJson = headersToJson(item.httpHeaders)
+                httpHeadersJson = headersToJson(item.httpHeaders),
+                suggestedFileName = preview?.let { SharedMediaFileNameFormatter.format(it, item) }
+                    ?: SharedMediaFileNameFormatter.format(previewTitle = null, item = item)
             )
         }
     }
@@ -35,9 +38,10 @@ class SharedMediaDownloadCoordinator(
 
     suspend fun enqueueAndStart(
         items: List<SharedMediaItem>,
-        qualitySelector: String? = null
+        qualitySelector: String? = null,
+        preview: SharedMediaPreview? = null
     ): List<Long> {
-        val downloadIds = enqueueSelected(items, qualitySelector)
+        val downloadIds = enqueueSelected(items, qualitySelector, preview)
         startServices(downloadIds)
         return downloadIds
     }
