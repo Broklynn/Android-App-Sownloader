@@ -630,6 +630,30 @@
                 </LinearLayout>
             </HorizontalScrollView>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="start"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/downloadsOriginFilterButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:singleLine="true"
+                    android:text="@string/downloads_origin_button_default"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_secondary_text"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
             <Button
                 android:id="@+id/clearFinishedButton"
                 android:layout_width="match_parent"

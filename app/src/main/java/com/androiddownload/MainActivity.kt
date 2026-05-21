@@ -274,6 +274,7 @@ class MainActivity : Activity() {
             filterPausedButton = findViewById(R.id.downloadsFilterPausedButton),
             filterCompletedButton = findViewById(R.id.downloadsFilterCompletedButton),
             filterFailedButton = findViewById(R.id.downloadsFilterFailedButton),
+            originFilterButton = findViewById(R.id.downloadsOriginFilterButton),
             activeDownloadCard = findViewById(R.id.activeDownloadCard),
             activeDownloadTitleText = findViewById(R.id.activeDownloadTitleText),
             activeDownloadNameText = findViewById(R.id.activeDownloadNameText),

@@ -1,6 +1,6 @@
 package com.androiddownload.ui.downloads
 
-import android.content.Context
+import android.app.Activity
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -15,10 +15,14 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.YtDlpQualityOptions
+import com.androiddownload.download.model.DownloadOrigin
+import com.androiddownload.download.model.DownloadOriginResolver
+import com.androiddownload.ui.common.DarkDialogFactory
+import com.androiddownload.ui.common.DarkOption
 import java.util.Locale
 
 class DownloadsController(
-    private val context: Context,
+    private val context: Activity,
     downloadsList: ListView,
     private val emptyDownloadsText: TextView,
     private val searchInput: EditText,
@@ -27,6 +31,7 @@ class DownloadsController(
     private val filterPausedButton: Button,
     private val filterCompletedButton: Button,
     private val filterFailedButton: Button,
+    private val originFilterButton: Button,
     private val activeDownloadCard: View,
     private val activeDownloadTitleText: TextView,
     private val activeDownloadNameText: TextView,
@@ -64,6 +69,7 @@ class DownloadsController(
     )
     private var downloads: List<DownloadEntity> = emptyList()
     private var filter = DownloadsFilter.ALL
+    private var originFilter: DownloadOrigin? = null
     private var searchQuery: String = ""
 
     init {
@@ -85,7 +91,9 @@ class DownloadsController(
         filterPausedButton.setOnClickListener { setFilter(DownloadsFilter.PAUSED) }
         filterCompletedButton.setOnClickListener { setFilter(DownloadsFilter.COMPLETED) }
         filterFailedButton.setOnClickListener { setFilter(DownloadsFilter.FAILED) }
+        originFilterButton.setOnClickListener { showOriginOptionsDialog() }
         updateFilterUi()
+        updateOriginFilterUi()
     }
 
     fun submitDownloads(downloads: List<DownloadEntity>) {
@@ -96,6 +104,14 @@ class DownloadsController(
     fun setFilter(filter: DownloadsFilter, refreshOnly: Boolean = false) {
         this.filter = filter
         updateFilterUi()
+        if (!refreshOnly) {
+            render()
+        }
+    }
+
+    fun setOriginFilter(origin: DownloadOrigin?, refreshOnly: Boolean = false) {
+        originFilter = origin
+        updateOriginFilterUi()
         if (!refreshOnly) {
             render()
         }
@@ -146,6 +162,7 @@ class DownloadsController(
         val filteredDownloads = downloads
             .filter { activeDownload == null || it.id != activeDownload.id }
             .filter { it.matchesFilter(filter) }
+            .filter { it.matchesOriginFilter(originFilter) }
             .filter { it.matchesSearch(searchQuery) }
         adapter.submitList(filteredDownloads)
         emptyDownloadsText.text = if (downloads.isEmpty()) {
@@ -182,6 +199,49 @@ class DownloadsController(
             button.setTextColor(
                 context.getColor(if (isSelected) R.color.brand else R.color.text_muted)
             )
+        }
+    }
+
+    private fun updateOriginFilterUi() {
+        originFilterButton.text = context.getString(
+            R.string.downloads_origin_button,
+            originLabel(originFilter)
+        )
+        originFilterButton.setBackgroundResource(R.drawable.bg_button_secondary)
+        originFilterButton.setTextColor(context.getColor(R.color.button_secondary_text))
+    }
+
+    private fun showOriginOptionsDialog() {
+        val options = originOptions()
+        val selectedIndex = options.indexOfFirst { it.first == originFilter }
+        DarkDialogFactory.showOptionsDialog(
+            activity = context,
+            title = context.getString(R.string.downloads_origin_dialog_title),
+            options = options.map { DarkOption(originLabel(it.first)) },
+            selectedIndex = selectedIndex
+        ) { index ->
+            setOriginFilter(options[index].first)
+        }
+    }
+
+    private fun originOptions(): List<Pair<DownloadOrigin?, String>> {
+        return listOf(
+            null to context.getString(R.string.downloads_origin_all),
+            DownloadOrigin.YOUTUBE to context.getString(R.string.downloads_origin_youtube),
+            DownloadOrigin.INSTAGRAM to context.getString(R.string.downloads_origin_instagram),
+            DownloadOrigin.TIKTOK to context.getString(R.string.downloads_origin_tiktok),
+            DownloadOrigin.FILES to context.getString(R.string.downloads_origin_files)
+        )
+    }
+
+    private fun originLabel(origin: DownloadOrigin?): String {
+        return when (origin) {
+            null -> context.getString(R.string.downloads_origin_all)
+            DownloadOrigin.YOUTUBE -> context.getString(R.string.downloads_origin_youtube)
+            DownloadOrigin.INSTAGRAM -> context.getString(R.string.downloads_origin_instagram)
+            DownloadOrigin.TIKTOK -> context.getString(R.string.downloads_origin_tiktok)
+            DownloadOrigin.FILES,
+            DownloadOrigin.UNKNOWN -> context.getString(R.string.downloads_origin_files)
         }
     }
 
@@ -289,6 +349,10 @@ class DownloadsController(
                 status == DownloadStatus.FAILED ||
                     status == DownloadStatus.CANCELED
         }
+    }
+
+    private fun DownloadEntity.matchesOriginFilter(origin: DownloadOrigin?): Boolean {
+        return origin == null || DownloadOriginResolver.resolve(this) == origin
     }
 
     private fun DownloadEntity.matchesSearch(query: String): Boolean {

@@ -24,6 +24,14 @@
     <string name="downloads_filter_paused">Pausados</string>
     <string name="downloads_filter_completed">OK</string>
     <string name="downloads_filter_failed">Falhas</string>
+    <string name="downloads_origin_all">Todos</string>
+    <string name="downloads_origin_youtube">Youtube</string>
+    <string name="downloads_origin_instagram">Instagram</string>
+    <string name="downloads_origin_tiktok">TikTok</string>
+    <string name="downloads_origin_files">Arquivos</string>
+    <string name="downloads_origin_button">Origem: %1$s</string>
+    <string name="downloads_origin_button_default">Origem: Todos</string>
+    <string name="downloads_origin_dialog_title">Origem</string>
     <string name="downloads_search_hint">Buscar downloads</string>
     <string name="downloads_empty_search">Nenhum download encontrado.</string>
     <string name="downloads_empty_filtered">Nenhum download neste filtro.</string>
