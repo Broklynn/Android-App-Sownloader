@@ -42,7 +42,7 @@ import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.request.DownloadRequestDecision
 import com.androiddownload.download.request.DownloadRequestPlanner
 import com.androiddownload.download.service.DownloadForegroundService
-import com.androiddownload.ui.downloads.DownloadDetailsRenderer
+import com.androiddownload.ui.downloads.DownloadDetailsDialogController
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.downloads.DownloadOpenRouter
@@ -169,6 +169,16 @@ class MainActivity : Activity() {
             startPlaybackAt = { index -> startPlaybackAt(index) },
             openExternal = { download -> fileActionsController.open(download) },
             formatLabelProvider = ::formatLabelForDetails
+        )
+    private val downloadDetailsDialogController: DownloadDetailsDialogController
+        get() = DownloadDetailsDialogController(
+            activity = this,
+            statusLabelProvider = ::downloadStatusLabel,
+            formatLabelProvider = ::formatLabelForDetails,
+            progressLabelProvider = ::progressLabelForDetails,
+            onCopyUrl = ::copyDownloadUrl,
+            onOpen = ::openDownload,
+            onShare = { download -> fileActionsController.share(download) }
         )
     private val qualityDialogController: QualityDialogController
         get() = QualityDialogController(this)
@@ -1419,37 +1429,7 @@ class MainActivity : Activity() {
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
-        val contentView = DownloadDetailsRenderer(
-            context = this,
-            statusLabelProvider = ::downloadStatusLabel,
-            formatLabelProvider = ::formatLabelForDetails,
-            progressLabelProvider = ::progressLabelForDetails
-        ).buildContent(download)
-        val buttons = mutableListOf(
-            DarkDialogButton(getString(R.string.details_close)),
-            DarkDialogButton(getString(R.string.details_copy_url), primary = true) {
-                copyDownloadUrl(download)
-            }
-        )
-        if (download.status == DownloadStatus.COMPLETED) {
-            buttons.add(
-                DarkDialogButton(getString(R.string.open)) {
-                    openDownload(download)
-                }
-            )
-            buttons.add(
-                DarkDialogButton(getString(R.string.details_share)) {
-                    fileActionsController.share(download)
-                }
-            )
-        }
-
-        DarkDialogFactory.showContentDialog(
-            activity = this,
-            title = download.fileName,
-            contentView = contentView,
-            buttons = buttons
-        )
+        downloadDetailsDialogController.show(download)
     }
 
     private fun formatLabelForDetails(download: DownloadEntity): String {
