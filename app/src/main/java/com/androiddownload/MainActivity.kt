@@ -49,6 +49,7 @@ import com.androiddownload.ui.home.ClipboardLinkPromptController
 import com.androiddownload.ui.home.HomeDownloadRequestController
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
+import com.androiddownload.ui.navigation.MainHeaderController
 import com.androiddownload.ui.navigation.MainNavigationController
 import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.downloads.QualityDialogController
@@ -193,6 +194,13 @@ class MainActivity : Activity() {
             addRecentDownloadUrl = ::addRecentDownloadUrl,
             openQualityPicker = ::openYtDlpQualityPicker,
             startDownload = ::startQueuedDownload
+        )
+    private val mainHeaderController: MainHeaderController
+        get() = MainHeaderController(
+            currentScreenProvider = { currentScreen },
+            focusHomeUrlInput = homeController::focusUrlInput,
+            showKeyboardForCurrentFocus = ::showKeyboardForCurrentFocus,
+            toggleDownloadsSearch = downloadsController::toggleSearch
         )
     private val diagnosticsController: DiagnosticsController
         get() = DiagnosticsController(this, ::showToast)
@@ -1319,14 +1327,7 @@ class MainActivity : Activity() {
     }
 
     private fun handleHeaderSearchClick() {
-        when (currentScreen) {
-            PrimaryScreen.DOWNLOADS -> downloadsController.toggleSearch()
-            PrimaryScreen.HOME -> {
-                homeController.focusUrlInput()
-                showKeyboardForCurrentFocus()
-            }
-            PrimaryScreen.PLAYER -> Unit
-        }
+        mainHeaderController.handleSearchClick()
     }
 
     private fun showKeyboardForCurrentFocus() {
