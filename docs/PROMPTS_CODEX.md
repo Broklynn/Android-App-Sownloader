@@ -17,7 +17,8 @@ Antes de agir, leia a documentação interna em `docs/`:
 - `docs/ROADMAP.md`;
 - `docs/BUGS_CONHECIDOS.md`;
 - `docs/DECISOES_TECNICAS.md`;
-- `docs/PROMPTS_CODEX.md`.
+- `docs/PROMPTS_CODEX.md`;
+- `docs/REGRAS_DE_TRABALHO.md`.
 
 O projeto está em fase de refatoração estrutural. Não implemente features novas, não adicione plataformas, não altere UI visual sem necessidade e não mude comportamento funcional sem necessidade.
 
@@ -47,12 +48,16 @@ Regras:
 - Não fazer `git add`, commit ou push sem pedido explícito.
 - Preservar Quick Share, Home, player interno, downloaders e subpastas.
 - Não adicionar cookies, login, Authorization, tokens, DRM, paywall ou conteúdo privado.
+- Sempre que a alteração exigir nova lógica, separar em funções, helpers, controllers, resolvers, renderers ou classes conforme necessário.
+- Não empilhar tudo em um único arquivo, especialmente `MainActivity`, `YtDlpDownloader`, `HttpDownloader` ou controllers já grandes.
+- Se a mudança começar a crescer demais, dividir em etapas menores.
 
 Antes de editar:
 
 - leia os arquivos relevantes;
 - mapeie responsabilidade atual;
 - escolha extração pequena;
+- avalie onde a nova lógica deve morar antes de implementar;
 - explique quais arquivos serão alterados.
 
 Depois de editar, rode:
@@ -228,4 +233,3 @@ Use este formato:
 10. Recomendação: pode commitar ou precisa ajustar.
 
 Se a etapa for apenas documentação, explique que build não foi necessário porque nenhum código, XML ou Gradle foi alterado.
-
