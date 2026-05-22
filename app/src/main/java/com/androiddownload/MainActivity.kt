@@ -45,6 +45,7 @@ import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsRenderer
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
+import com.androiddownload.ui.downloads.DownloadOpenRouter
 import com.androiddownload.ui.common.DarkDialogButton
 import com.androiddownload.ui.common.DarkDialogFactory
 import com.androiddownload.ui.home.HomeController
@@ -160,6 +161,15 @@ class MainActivity : Activity() {
         get() = SettingsPreferencesStore(settingsPreferences)
     private val fileActionsController: FileActionsController
         get() = FileActionsController(this, ::showToast)
+    private val downloadOpenRouter: DownloadOpenRouter
+        get() = DownloadOpenRouter(
+            getDownloads = { currentDownloads },
+            setPlayerCategoryForOpen = ::setPlayerCategoryForOpen,
+            showPlayer = ::showPlayer,
+            startPlaybackAt = { index -> startPlaybackAt(index) },
+            openExternal = { download -> fileActionsController.open(download) },
+            formatLabelProvider = ::formatLabelForDetails
+        )
     private val qualityDialogController: QualityDialogController
         get() = QualityDialogController(this)
     private val quickDownloadSheetController: QuickDownloadSheetController
@@ -605,7 +615,9 @@ class MainActivity : Activity() {
 
     private fun renderPlayerList() {
         val previousPlayingId = currentPlayingDownload()?.id
-        playerItems = currentDownloads.filter { it.matchesPlayerCategory(playerCategory) }
+        playerItems = currentDownloads.filter {
+            DownloadOpenRouter.matchesPlayerCategory(it, playerCategory, ::formatLabelForDetails)
+        }
         if (currentPlayerIndex >= playerItems.size ||
             currentPlayerIndex >= 0 && playerItems.none { it.id == previousPlayingId }
         ) {
@@ -980,6 +992,19 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun DownloadEntity.finalFileExtension(): String {
+        val uriPath = destinationUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
+            .orEmpty()
+        return listOf(fileName, uriPath)
+            .firstNotNullOfOrNull { name ->
+                name.substringAfterLast('.', missingDelimiterValue = "")
+                    .takeIf { it.isNotBlank() }
+            }
+            .orEmpty()
+    }
+
     private fun currentPlayingDownload(): DownloadEntity? {
         return playerItems.getOrNull(currentPlayerIndex)
     }
@@ -1243,35 +1268,6 @@ class MainActivity : Activity() {
         return "%d:%02d".format(Locale.US, minutes, seconds)
     }
 
-    private fun DownloadEntity.matchesPlayerCategory(category: PlayerCategory): Boolean {
-        if (status != DownloadStatus.COMPLETED) return false
-        if (destinationUri.isNullOrBlank()) return false
-        val extension = finalFileExtension().lowercase(Locale.US)
-        val formatLabel = formatLabelForDetails(this).uppercase(Locale.US)
-        val normalizedMime = normalizeMimeType(mimeType).orEmpty().lowercase(Locale.US)
-        return when (category) {
-            PlayerCategory.MUSIC ->
-                extension == "mp3" &&
-                    ("MP3" in formatLabel || normalizedMime == "audio/mpeg")
-            PlayerCategory.VIDEO ->
-                extension == "mp4" &&
-                    ("MP4" in formatLabel || normalizedMime == "video/mp4")
-        }
-    }
-
-    private fun DownloadEntity.finalFileExtension(): String {
-        val uriPath = destinationUri
-            ?.takeIf { it.isNotBlank() }
-            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
-            .orEmpty()
-        return listOf(fileName, uriPath)
-            .firstNotNullOfOrNull { name ->
-                name.substringAfterLast('.', missingDelimiterValue = "")
-                    .takeIf { it.isNotBlank() }
-            }
-            .orEmpty()
-    }
-
     private fun resolvePlaybackUri(download: DownloadEntity): Uri? {
         val destination = download.destinationUri?.takeIf { it.isNotBlank() } ?: return null
         val destinationUri = Uri.parse(destination)
@@ -1495,32 +1491,14 @@ class MainActivity : Activity() {
     }
 
     private fun openDownload(download: DownloadEntity) {
-        if (tryOpenInInternalPlayer(download)) return
-        fileActionsController.open(download)
+        downloadOpenRouter.open(download)
     }
 
-    private fun tryOpenInInternalPlayer(download: DownloadEntity): Boolean {
-        val category = internalPlayerCategoryFor(download) ?: return false
-        val targetIndex = currentDownloads
-            .filter { it.matchesPlayerCategory(category) }
-            .indexOfFirst { it.id == download.id }
-        if (targetIndex < 0) return false
-
+    private fun setPlayerCategoryForOpen(category: PlayerCategory) {
         if (playerCategory != category) {
             pauseCurrentPlayback()
             stopCurrentPlayback(clearSelection = true)
             playerCategory = category
-        }
-        showPlayer()
-        startPlaybackAt(targetIndex)
-        return true
-    }
-
-    private fun internalPlayerCategoryFor(download: DownloadEntity): PlayerCategory? {
-        return when {
-            download.matchesPlayerCategory(PlayerCategory.MUSIC) -> PlayerCategory.MUSIC
-            download.matchesPlayerCategory(PlayerCategory.VIDEO) -> PlayerCategory.VIDEO
-            else -> null
         }
     }
 
