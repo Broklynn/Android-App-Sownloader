@@ -11,6 +11,7 @@ import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -344,7 +345,8 @@ class HttpDownloader(
                     sourceFile = tempFile,
                     preferredName = displayFileName,
                     mimeType = mimeType,
-                    preserveName = resumeOffset > 0L
+                    preserveName = resumeOffset > 0L,
+                    destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(current)
                 )
                 repository.update(
                     current.copy(

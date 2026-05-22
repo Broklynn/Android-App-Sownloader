@@ -64,7 +64,8 @@ object DownloadDestinationResolver {
         sourceFile: File,
         preferredName: String,
         mimeType: String?,
-        preserveName: Boolean = false
+        preserveName: Boolean = false,
+        destinationSubfolder: String? = null
     ): SavedFile {
         if (!sourceFile.exists() || !sourceFile.isFile || sourceFile.length() <= 0L) {
             throw DestinationException(context.getString(R.string.download_final_file_invalid))
@@ -73,9 +74,9 @@ object DownloadDestinationResolver {
         return if (treeUri != null) {
             saveToTree(context, treeUri, sourceFile, preferredName, mimeType)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveToMediaStore(context, sourceFile, preferredName, mimeType)
+            saveToMediaStore(context, sourceFile, preferredName, mimeType, destinationSubfolder)
         } else {
-            saveToDefaultDirectory(context, sourceFile, preferredName, mimeType, preserveName)
+            saveToDefaultDirectory(context, sourceFile, preferredName, mimeType, preserveName, destinationSubfolder)
         }
     }
 
@@ -99,9 +100,10 @@ object DownloadDestinationResolver {
         sourceFile: File,
         preferredName: String,
         mimeType: String?,
-        preserveName: Boolean
+        preserveName: Boolean,
+        destinationSubfolder: String?
     ): SavedFile {
-        val finalFile = resolveDefaultFile(context, preferredName, mimeType, preserveName)
+        val finalFile = resolveDefaultFile(context, preferredName, mimeType, preserveName, destinationSubfolder)
         finalFile.parentFile?.mkdirs()
         if (!sourceFile.renameTo(finalFile)) {
             sourceFile.inputStream().use { input ->
@@ -122,23 +124,23 @@ object DownloadDestinationResolver {
         context: Context,
         sourceFile: File,
         preferredName: String,
-        mimeType: String?
+        mimeType: String?,
+        destinationSubfolder: String?
     ): SavedFile {
         val resolver = context.contentResolver
         val documentMimeType = normalizeMimeType(mimeType)
             ?: mimeTypeForName(preferredName)
             ?: "application/octet-stream"
+        val relativePath = publicRelativePath(destinationSubfolder)
         val fileName = uniqueMediaStoreFileName(
             resolver = resolver,
-            preferredName = FileNameUtils.ensureExtension(preferredName, documentMimeType)
+            preferredName = FileNameUtils.ensureExtension(preferredName, documentMimeType),
+            relativePath = mediaStoreQueryRelativePath(destinationSubfolder)
         )
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
             put(MediaStore.Downloads.MIME_TYPE, documentMimeType)
-            put(
-                MediaStore.Downloads.RELATIVE_PATH,
-                "${Environment.DIRECTORY_DOWNLOADS}/$DEFAULT_PUBLIC_SUBDIRECTORY"
-            )
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -166,7 +168,7 @@ object DownloadDestinationResolver {
             url = "app",
             option = "destino",
             attempt = "salvar arquivo",
-            result = "salvando em Downloads/DarkWave",
+            result = "salvando em $relativePath",
             error = targetUri.toString()
         )
         return SavedFile(fileName = fileName, uri = targetUri, bytes = bytes)
@@ -220,9 +222,10 @@ object DownloadDestinationResolver {
         context: Context,
         preferredName: String,
         mimeType: String?,
-        preserveName: Boolean
+        preserveName: Boolean,
+        destinationSubfolder: String?
     ): File {
-        val directory = defaultDirectory(context)
+        val directory = File(defaultDirectory(context), cleanDestinationSubfolder(destinationSubfolder))
         directory.mkdirs()
         val cleanName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName), mimeType)
         if (preserveName) return File(directory, cleanName)
@@ -266,9 +269,10 @@ object DownloadDestinationResolver {
 
     private fun uniqueMediaStoreFileName(
         resolver: ContentResolver,
-        preferredName: String
+        preferredName: String,
+        relativePath: String
     ): String {
-        val existingNames = queryMediaStoreFileNames(resolver)
+        val existingNames = queryMediaStoreFileNames(resolver, relativePath)
         if (preferredName !in existingNames) return preferredName
         val name = preferredName.substringBeforeLast('.', preferredName)
         val extension = preferredName.substringAfterLast('.', missingDelimiterValue = "")
@@ -284,11 +288,10 @@ object DownloadDestinationResolver {
         }
     }
 
-    private fun queryMediaStoreFileNames(resolver: ContentResolver): Set<String> {
+    private fun queryMediaStoreFileNames(resolver: ContentResolver, relativePath: String): Set<String> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptySet()
         val names = mutableSetOf<String>()
         val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$DEFAULT_PUBLIC_SUBDIRECTORY/"
         runCatching {
             resolver.query(
                 collection,
@@ -305,6 +308,23 @@ object DownloadDestinationResolver {
             }
         }
         return names
+    }
+
+    internal fun publicRelativePath(destinationSubfolder: String?): String {
+        return "$publicDownloadsDirectory/$DEFAULT_PUBLIC_SUBDIRECTORY/${cleanDestinationSubfolder(destinationSubfolder)}"
+    }
+
+    internal fun mediaStoreQueryRelativePath(destinationSubfolder: String?): String {
+        return "${publicRelativePath(destinationSubfolder)}/"
+    }
+
+    private fun cleanDestinationSubfolder(destinationSubfolder: String?): String {
+        return destinationSubfolder
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { FileNameUtils.sanitize(it) }
+            ?.takeIf { it.isNotBlank() && it != "." && it != ".." }
+            ?: DEFAULT_FILES_SUBDIRECTORY
     }
 
     private fun queryTreeFileNames(resolver: ContentResolver, treeUri: Uri): Set<String> {
@@ -345,4 +365,9 @@ object DownloadDestinationResolver {
             ?: return null
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
     }
+
+    private val publicDownloadsDirectory: String
+        get() = Environment.DIRECTORY_DOWNLOADS ?: "Download"
+
+    private const val DEFAULT_FILES_SUBDIRECTORY = "Arquivos"
 }

@@ -12,6 +12,7 @@ import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -864,7 +865,8 @@ class YtDlpDownloader(
                 context = context,
                 sourceFile = preparedFinalFile,
                 preferredName = finalName,
-                mimeType = expectedMimeType
+                mimeType = expectedMimeType,
+                destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(latest)
             )
         } catch (exception: DownloadDestinationResolver.DestinationException) {
             YtDlpDiagnostics.record(
