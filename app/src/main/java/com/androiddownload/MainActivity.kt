@@ -38,8 +38,6 @@ import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
-import com.androiddownload.download.request.DownloadRequestDecision
-import com.androiddownload.download.request.DownloadRequestPlanner
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
 import com.androiddownload.ui.downloads.DownloadsController
@@ -48,8 +46,10 @@ import com.androiddownload.ui.downloads.DownloadOpenRouter
 import com.androiddownload.ui.common.DarkDialogButton
 import com.androiddownload.ui.common.DarkDialogFactory
 import com.androiddownload.ui.home.ClipboardLinkPromptController
+import com.androiddownload.ui.home.HomeDownloadRequestController
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
+import com.androiddownload.ui.navigation.MainNavigationController
 import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.downloads.QualityDialogController
 import com.androiddownload.ui.downloads.QualityOptionUi
@@ -93,6 +93,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
     private lateinit var settingsController: SettingsController
+    private lateinit var mainNavigationController: MainNavigationController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
     private lateinit var playerTabButton: Button
@@ -184,7 +185,15 @@ class MainActivity : Activity() {
         get() = QualityDialogController(this)
     private val quickDownloadSheetController: QuickDownloadSheetController
         get() = QuickDownloadSheetController(this)
-    private val downloadRequestPlanner = DownloadRequestPlanner()
+    private val homeDownloadRequestController: HomeDownloadRequestController
+        get() = HomeDownloadRequestController(
+            selectedDefaultQualityProvider = ::selectedDefaultQualityOption,
+            showInvalidUrl = { message -> homeController.showError(message) },
+            invalidUrlMessageProvider = { getString(R.string.invalid_url) },
+            addRecentDownloadUrl = ::addRecentDownloadUrl,
+            openQualityPicker = ::openYtDlpQualityPicker,
+            startDownload = ::startQueuedDownload
+        )
     private val diagnosticsController: DiagnosticsController
         get() = DiagnosticsController(this, ::showToast)
     private val app: AndroidDownloadApp
@@ -235,6 +244,14 @@ class MainActivity : Activity() {
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         playerTabButton = findViewById(R.id.playerTabButton)
+        mainNavigationController = MainNavigationController(
+            homeContainer = homeContainer,
+            downloadsContainer = downloadsContainer,
+            playerContainer = playerContainer,
+            homeTabButton = homeTabButton,
+            downloadsTabButton = downloadsTabButton,
+            playerTabButton = playerTabButton
+        )
         defaultQualityValueText = findViewById(R.id.defaultQualityValueText)
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
         playerMusicChip = findViewById(R.id.playerMusicChip)
@@ -375,9 +392,8 @@ class MainActivity : Activity() {
             renderRecentDownloads()
         }
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
-            handleDownloadRequest(
+            homeDownloadRequestController.handleDownloadRequest(
                 rawUrl = rawUrl,
-                onError = homeController::showError,
                 homeController = homeController
             )
         }
@@ -467,26 +483,20 @@ class MainActivity : Activity() {
         downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
-        homeContainer.visibility = View.VISIBLE
-        playerContainer.visibility = View.GONE
-        downloadsContainer.visibility = View.GONE
+        mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
         settingsController.hide()
         renderHomeRecentDownloads()
         renderRecentDownloads()
-        updateSelectedTab(homeTabButton)
     }
 
     private fun showDownloads() {
         currentScreen = PrimaryScreen.DOWNLOADS
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
-        homeContainer.visibility = View.GONE
-        playerContainer.visibility = View.GONE
-        downloadsContainer.visibility = View.VISIBLE
+        mainNavigationController.showPrimaryScreen(PrimaryScreen.DOWNLOADS)
         settingsController.hide()
         downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
         downloadsController.hideSearch(clearQuery = true)
-        updateSelectedTab(downloadsTabButton)
     }
 
     private fun showClearFinishedDownloadsDialog() {
@@ -1505,12 +1515,9 @@ class MainActivity : Activity() {
         downloadsController.hideSearch(clearQuery = true)
         appHeader.visibility = View.VISIBLE
         mainTabBar.visibility = View.VISIBLE
-        homeContainer.visibility = View.GONE
-        playerContainer.visibility = View.VISIBLE
-        downloadsContainer.visibility = View.GONE
+        mainNavigationController.showPrimaryScreen(PrimaryScreen.PLAYER)
         settingsController.hide()
         renderPlayerList()
-        updateSelectedTab(playerTabButton)
     }
 
     private fun showSettings(scrollToDownloadLocation: Boolean = false) {
@@ -1790,53 +1797,6 @@ class MainActivity : Activity() {
                 if (resetLoadingOnExit) {
                     homeController?.setLoading(false)
                 }
-            }
-        }
-    }
-
-    private fun handleDownloadRequest(
-        rawUrl: String,
-        homeController: HomeController? = null,
-        onError: ((String) -> Unit)? = null
-    ) {
-        val selectedDefaultQuality = selectedDefaultQualityOption()
-        when (
-            val decision = downloadRequestPlanner.plan(
-                rawUrl = rawUrl,
-                defaultQualityPreferenceValue = selectedDefaultQuality.preferenceValue,
-                defaultQualitySelector = selectedDefaultQuality.formatSelector
-            )
-        ) {
-            is DownloadRequestDecision.InvalidUrl -> {
-                val message = getString(R.string.invalid_url)
-                if (homeController != null) {
-                    homeController.showError(message)
-                } else {
-                    onError?.invoke(message) ?: showToast(message)
-                }
-            }
-            is DownloadRequestDecision.DirectDownload -> {
-                addRecentDownloadUrl(decision.url)
-                startQueuedDownload(
-                    url = decision.url,
-                    qualitySelector = null,
-                    homeController = homeController
-                )
-            }
-            is DownloadRequestDecision.YtDlpAskQuality -> {
-                addRecentDownloadUrl(decision.url)
-                openYtDlpQualityPicker(
-                    url = decision.url,
-                    homeController = homeController
-                )
-            }
-            is DownloadRequestDecision.YtDlpFixedQuality -> {
-                addRecentDownloadUrl(decision.url)
-                startQueuedDownload(
-                    url = decision.url,
-                    qualitySelector = decision.qualitySelector,
-                    homeController = homeController
-                )
             }
         }
     }
