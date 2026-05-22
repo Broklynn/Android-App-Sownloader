@@ -61,6 +61,7 @@ import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
+import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CancellationException
@@ -560,7 +561,13 @@ class MainActivity : Activity() {
                 val duration = currentDuration()
                 if (duration > 0) {
                     playerControlsController.updateInlineSeekPreview(
-                        formatPlaybackTime(progressToPosition(progress, duration))
+                        PlayerProgressCalculator.formatPlaybackTime(
+                            PlayerProgressCalculator.progressToPosition(
+                                progress = progress,
+                                durationMs = duration,
+                                maxProgress = playerSeekBar.max
+                            )
+                        )
                     )
                 }
             }
@@ -572,7 +579,13 @@ class MainActivity : Activity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val duration = currentDuration()
                 if (duration > 0 && isCurrentPlaybackPrepared()) {
-                    seekCurrentPlayback(progressToPosition(seekBar?.progress ?: 0, duration))
+                    seekCurrentPlayback(
+                        PlayerProgressCalculator.progressToPosition(
+                            progress = seekBar?.progress ?: 0,
+                            durationMs = duration,
+                            maxProgress = playerSeekBar.max
+                        )
+                    )
                 }
                 userSeeking = false
                 updatePlaybackProgress()
@@ -584,7 +597,13 @@ class MainActivity : Activity() {
                 val duration = currentDuration()
                 if (duration > 0) {
                     playerControlsController.updateFullscreenSeekPreview(
-                        formatPlaybackTime(progressToPosition(progress, duration))
+                        PlayerProgressCalculator.formatPlaybackTime(
+                            PlayerProgressCalculator.progressToPosition(
+                                progress = progress,
+                                durationMs = duration,
+                                maxProgress = playerSeekBar.max
+                            )
+                        )
                     )
                 }
             }
@@ -596,7 +615,13 @@ class MainActivity : Activity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val duration = currentDuration()
                 if (duration > 0 && isCurrentPlaybackPrepared()) {
-                    seekCurrentPlayback(progressToPosition(seekBar?.progress ?: 0, duration))
+                    seekCurrentPlayback(
+                        PlayerProgressCalculator.progressToPosition(
+                            progress = seekBar?.progress ?: 0,
+                            durationMs = duration,
+                            maxProgress = playerSeekBar.max
+                        )
+                    )
                 }
                 fullscreenUserSeeking = false
                 updatePlaybackProgress()
@@ -971,9 +996,13 @@ class MainActivity : Activity() {
         val position = currentPosition()
         if (duration > 0) {
             playerControlsController.updateProgress(
-                progress = positionToProgress(position, duration),
-                currentTime = formatPlaybackTime(position),
-                duration = formatPlaybackTime(duration),
+                progress = PlayerProgressCalculator.positionToProgress(
+                    positionMs = position,
+                    durationMs = duration,
+                    maxProgress = playerSeekBar.max
+                ),
+                currentTime = PlayerProgressCalculator.formatPlaybackTime(position),
+                duration = PlayerProgressCalculator.formatPlaybackTime(duration),
                 updateInlineSeek = !userSeeking,
                 updateFullscreenSeek = !fullscreenUserSeeking
             )
@@ -1136,7 +1165,7 @@ class MainActivity : Activity() {
         videoFullscreenTitleText.text = download.fileName
         playerControlsController.updateFullscreenProgress(
             progress = 0,
-            currentTime = formatPlaybackTime(position),
+            currentTime = PlayerProgressCalculator.formatPlaybackTime(position),
             duration = playerDurationText.text
         )
         enterVideoFullscreenChrome()
@@ -1247,7 +1276,11 @@ class MainActivity : Activity() {
         if (!isVideoFullscreenOpen() || !fullscreenVideoPrepared) return
         val duration = currentDuration()
         if (duration <= 0) return
-        val target = (currentPosition() + deltaMs).coerceIn(0, duration)
+        val target = PlayerProgressCalculator.seekBy(
+            currentPositionMs = currentPosition(),
+            deltaMs = deltaMs,
+            durationMs = duration
+        )
         seekCurrentPlayback(target)
         updatePlaybackProgress()
         showFullscreenSeekFeedback(
@@ -1291,23 +1324,6 @@ class MainActivity : Activity() {
             appHeader.visibility = View.VISIBLE
             mainTabBar.visibility = View.VISIBLE
         }
-    }
-
-    private fun positionToProgress(position: Int, duration: Int): Int {
-        if (duration <= 0) return 0
-        return ((position.toLong() * playerSeekBar.max) / duration).toInt().coerceIn(0, playerSeekBar.max)
-    }
-
-    private fun progressToPosition(progress: Int, duration: Int): Int {
-        if (duration <= 0) return 0
-        return ((progress.toLong().coerceIn(0, playerSeekBar.max.toLong()) * duration) / playerSeekBar.max).toInt()
-    }
-
-    private fun formatPlaybackTime(milliseconds: Int): String {
-        val totalSeconds = (milliseconds / 1000).coerceAtLeast(0)
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return "%d:%02d".format(Locale.US, minutes, seconds)
     }
 
     private fun resolvePlaybackUri(download: DownloadEntity): Uri? {
