@@ -59,6 +59,7 @@ import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
+import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
@@ -172,6 +173,8 @@ class MainActivity : Activity() {
             openExternal = { download -> fileActionsController.open(download) },
             formatLabelProvider = ::formatLabelForDetails
         )
+    private val playerListController: PlayerListController
+        get() = PlayerListController()
     private val downloadDetailsDialogController: DownloadDetailsDialogController
         get() = DownloadDetailsDialogController(
             activity = this,
@@ -650,15 +653,19 @@ class MainActivity : Activity() {
 
     private fun renderPlayerList() {
         val previousPlayingId = currentPlayingDownload()?.id
-        playerItems = currentDownloads.filter {
-            DownloadOpenRouter.matchesPlayerCategory(it, playerCategory, ::formatLabelForDetails)
-        }
-        if (currentPlayerIndex >= playerItems.size ||
-            currentPlayerIndex >= 0 && playerItems.none { it.id == previousPlayingId }
-        ) {
+        val state = playerListController.buildState(
+            downloads = currentDownloads,
+            category = playerCategory,
+            currentIndex = currentPlayerIndex,
+            currentPlayingId = previousPlayingId,
+            matchesPlayerCategory = { download, category ->
+                DownloadOpenRouter.matchesPlayerCategory(download, category, ::formatLabelForDetails)
+            }
+        )
+        playerItems = state.items
+        currentPlayerIndex = state.currentIndex
+        if (state.shouldClearSelection) {
             stopCurrentPlayback(clearSelection = true)
-        } else if (currentPlayerIndex >= 0 && previousPlayingId != null) {
-            currentPlayerIndex = playerItems.indexOfFirst { it.id == previousPlayingId }
         }
 
         updatePlayerCategoryUi()
