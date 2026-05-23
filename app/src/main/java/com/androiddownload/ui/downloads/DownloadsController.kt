@@ -14,7 +14,6 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
-import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.download.model.DownloadOrigin
 import com.androiddownload.download.model.DownloadOriginResolver
 import com.androiddownload.ui.common.DarkDialogFactory
@@ -430,8 +429,7 @@ class DownloadsController(
     }
 
     private fun formatLabel(download: DownloadEntity): String {
-        val label = YtDlpQualityOptions.labelForDownload(context, download)
-        return if (label.isBlank()) context.getString(R.string.download_direct) else label
+        return DownloadFormatLabelFormatter.labelForDownload(context, download)
     }
 
     private fun downloadStatusLabel(status: DownloadStatus): String {
