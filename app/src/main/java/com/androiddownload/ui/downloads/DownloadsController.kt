@@ -383,17 +383,11 @@ class DownloadsController(
     }
 
     private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
-        return DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
-            download.totalBytes <= 0 &&
-            download.progress <= 0 &&
-            (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
+        return DownloadSummaryFormatter.isIndeterminate(download)
     }
 
     private fun normalizedProgress(download: DownloadEntity): Int {
-        return when (download.status) {
-            DownloadStatus.COMPLETED -> 100
-            else -> download.progress.coerceIn(0, 100)
-        }
+        return DownloadSummaryFormatter.normalizedProgress(download)
     }
 
     private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
@@ -406,16 +400,7 @@ class DownloadsController(
     }
 
     private fun summaryDownloadSizeText(download: DownloadEntity): String {
-        return when {
-            download.totalBytes > 0 -> {
-                val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
-                val total = FileSizeFormatter.formatBytes(download.totalBytes)
-                "$downloaded / $total"
-            }
-            download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
-            download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
-            else -> ""
-        }
+        return DownloadSummaryFormatter.summarySizeText(download)
     }
 
     private fun formatLabel(download: DownloadEntity): String {
