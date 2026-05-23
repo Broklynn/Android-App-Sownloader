@@ -95,7 +95,7 @@ class DownloadsAdapter(
             progressBar.isIndeterminate = indeterminate
             progressBar.progress = progress
             progressText.text = progressLabel(download, indeterminate, progress)
-            val sizeLabel = buildSizeText(download)
+            val sizeLabel = DownloadItemSizeFormatter.sizeText(download)
             sizeText.text = sizeLabel
             sizeText.visibility = if (sizeLabel.isBlank()) View.GONE else View.VISIBLE
             speedText.text = FileSizeFormatter.formatSpeed(download.speed).ifBlank {
@@ -237,24 +237,6 @@ class DownloadsAdapter(
                     onRetryClick
                 )
                 else -> null
-            }
-        }
-
-        private fun buildSizeText(download: DownloadEntity): String {
-            return when {
-                download.totalBytes > 0 -> {
-                    val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
-                    val total = FileSizeFormatter.formatBytes(download.totalBytes)
-                    "$downloaded / $total"
-                }
-                download.status == DownloadStatus.RUNNING ||
-                    download.status == DownloadStatus.PREPARING ||
-                    download.status == DownloadStatus.QUEUED -> {
-                    ""
-                }
-                download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
-                download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
-                else -> ""
             }
         }
 
