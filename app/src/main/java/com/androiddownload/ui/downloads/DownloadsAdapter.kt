@@ -15,7 +15,6 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
-import com.androiddownload.core.utils.YtDlpQualityOptions
 import java.util.Locale
 
 class DownloadsAdapter(
@@ -88,7 +87,7 @@ class DownloadsAdapter(
             fileNameText.text = displayTitle(download)
             statusText.text = statusLabel(download.status)
             statusText.setTextColor(statusColor(download.status))
-            val formatLabel = YtDlpQualityOptions.labelForDownload(root.context, download)
+            val formatLabel = DownloadFormatLabelFormatter.labelForDownload(root.context, download)
             downloadTypeBadge.text = typeBadgeLabel(download, formatLabel)
             formatText.text = formatLabel
             formatText.visibility = if (formatLabel.isBlank()) View.GONE else View.VISIBLE
