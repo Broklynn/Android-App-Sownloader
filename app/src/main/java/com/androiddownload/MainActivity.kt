@@ -57,6 +57,7 @@ import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
+import com.androiddownload.ui.player.PlayerAdjacentNavigator
 import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
@@ -966,14 +967,13 @@ class MainActivity : Activity() {
     }
 
     private fun playAdjacent(offset: Int) {
-        if (playerItems.isEmpty()) return
-        val nextIndex = if (currentPlayerIndex < 0) {
-            0
-        } else {
-            (currentPlayerIndex + offset).coerceIn(0, playerItems.lastIndex)
-        }
-        if (nextIndex != currentPlayerIndex || currentPlayerIndex < 0) {
-            startPlaybackAt(nextIndex)
+        val target = PlayerAdjacentNavigator.resolveTarget(
+            itemCount = playerItems.size,
+            currentIndex = currentPlayerIndex,
+            offset = offset
+        )
+        if (target.shouldStart && target.targetIndex != null) {
+            startPlaybackAt(target.targetIndex)
         }
     }
 
