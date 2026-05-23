@@ -10,6 +10,20 @@ data class YtDlpQualityOption(
     val formatSelector: String
 )
 
+data class YtDlpQualityLabelTexts(
+    val direct: String,
+    val custom: String,
+    val legacy: String,
+    val mp4_1440p: String,
+    val mp4_1080p: String,
+    val mp4_720p: String,
+    val mp4_480p: String,
+    val mp3_320k: String,
+    val mp3_256k: String,
+    val mp3_192k: String,
+    val mp3_128k: String
+)
+
 object YtDlpQualityOptions {
     const val SELECTOR_MP4_1440P = "bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440][ext=mp4]/best[height<=1440]"
     const val SELECTOR_MP4_1080P = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]"
@@ -40,20 +54,44 @@ object YtDlpQualityOptions {
     }
 
     fun labelForDownload(context: Context, download: DownloadEntity): String {
-        val selector = download.qualitySelector?.trim().orEmpty()
+        return labelForDownload(
+            qualitySelector = download.qualitySelector,
+            sourceUrl = download.sourceUrl,
+            labels = YtDlpQualityLabelTexts(
+                direct = context.getString(R.string.download_direct),
+                custom = context.getString(R.string.custom_format),
+                legacy = context.getString(R.string.legacy_format),
+                mp4_1440p = context.getString(R.string.ytdlp_quality_mp4_1440p),
+                mp4_1080p = context.getString(R.string.ytdlp_quality_mp4_1080p),
+                mp4_720p = context.getString(R.string.ytdlp_quality_mp4_720p),
+                mp4_480p = context.getString(R.string.ytdlp_quality_mp4_480p),
+                mp3_320k = context.getString(R.string.ytdlp_quality_mp3_320k),
+                mp3_256k = context.getString(R.string.ytdlp_quality_mp3_256k),
+                mp3_192k = context.getString(R.string.ytdlp_quality_mp3_192k),
+                mp3_128k = context.getString(R.string.ytdlp_quality_mp3_128k)
+            )
+        )
+    }
+
+    fun labelForDownload(
+        qualitySelector: String?,
+        sourceUrl: String,
+        labels: YtDlpQualityLabelTexts
+    ): String {
+        val selector = qualitySelector?.trim().orEmpty()
         return when {
-            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> context.getString(R.string.download_direct)
-            selector.isBlank() -> context.getString(R.string.custom_format)
-            selector == SELECTOR_MP4_1440P -> context.getString(R.string.ytdlp_quality_mp4_1440p)
-            selector == SELECTOR_MP4_1080P -> context.getString(R.string.ytdlp_quality_mp4_1080p)
-            selector == SELECTOR_MP4_720P -> context.getString(R.string.ytdlp_quality_mp4_720p)
-            selector == SELECTOR_MP4_480P -> context.getString(R.string.ytdlp_quality_mp4_480p)
-            selector == SELECTOR_MP3_320K -> context.getString(R.string.ytdlp_quality_mp3_320k)
-            selector == SELECTOR_MP3_256K -> context.getString(R.string.ytdlp_quality_mp3_256k)
-            selector == SELECTOR_MP3_192K -> context.getString(R.string.ytdlp_quality_mp3_192k)
-            selector == SELECTOR_MP3_128K -> context.getString(R.string.ytdlp_quality_mp3_128k)
-            selector in LEGACY_SELECTORS -> context.getString(R.string.legacy_format)
-            else -> context.getString(R.string.custom_format)
+            DownloadSourceClassifier.shouldUseHttpDownloader(sourceUrl) -> labels.direct
+            selector.isBlank() -> labels.custom
+            selector == SELECTOR_MP4_1440P -> labels.mp4_1440p
+            selector == SELECTOR_MP4_1080P -> labels.mp4_1080p
+            selector == SELECTOR_MP4_720P -> labels.mp4_720p
+            selector == SELECTOR_MP4_480P -> labels.mp4_480p
+            selector == SELECTOR_MP3_320K -> labels.mp3_320k
+            selector == SELECTOR_MP3_256K -> labels.mp3_256k
+            selector == SELECTOR_MP3_192K -> labels.mp3_192k
+            selector == SELECTOR_MP3_128K -> labels.mp3_128k
+            selector in LEGACY_SELECTORS -> labels.legacy
+            else -> labels.custom
         }
     }
 
