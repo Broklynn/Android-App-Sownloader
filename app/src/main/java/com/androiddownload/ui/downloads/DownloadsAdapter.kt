@@ -15,7 +15,6 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadErrorFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.FileSizeFormatter
-import java.util.Locale
 
 class DownloadsAdapter(
     context: Context,
@@ -156,17 +155,11 @@ class DownloadsAdapter(
         }
 
         private fun isIndeterminate(download: DownloadEntity): Boolean {
-            return DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
-                download.totalBytes <= 0 &&
-                download.progress <= 0 &&
-                (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
+            return DownloadSummaryFormatter.isIndeterminate(download)
         }
 
         private fun normalizedProgress(download: DownloadEntity): Int {
-            return when (download.status) {
-                DownloadStatus.COMPLETED -> 100
-                else -> download.progress.coerceIn(0, 100)
-            }
+            return DownloadSummaryFormatter.normalizedProgress(download)
         }
 
         private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
@@ -266,13 +259,7 @@ class DownloadsAdapter(
         }
 
         private fun typeBadgeLabel(download: DownloadEntity, formatLabel: String): String {
-            val label = formatLabel.uppercase(Locale.US)
-            return when {
-                "MP3" in label -> "MP3"
-                "MP4" in label -> "MP4"
-                DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "HTTP"
-                else -> "MIDIA"
-            }
+            return DownloadSummaryFormatter.typeBadgeLabel(download, formatLabel)
         }
     }
 }
