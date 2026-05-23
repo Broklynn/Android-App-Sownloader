@@ -62,6 +62,7 @@ import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.player.PlayerMediaLabelResolver
+import com.androiddownload.ui.player.PlayerNowPlayingTextFormatter
 import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
@@ -1030,19 +1031,32 @@ class MainActivity : Activity() {
     private fun updateNowPlayingInfo(download: DownloadEntity? = currentPlayingDownload()) {
         val current = download
         if (current == null || currentPlayerIndex < 0) {
-            playerControlsController.updateNowPlaying(
+            val text = PlayerNowPlayingTextFormatter.buildEmptyText(
                 title = getString(R.string.player_nothing_selected),
                 subtitle = getString(R.string.player_select_file),
                 meta = getString(R.string.player_status_stopped)
+            )
+            playerControlsController.updateNowPlaying(
+                title = text.title,
+                subtitle = text.subtitle,
+                meta = text.meta
             )
             return
         }
 
         val formatLabel = formatLabelForDetails(current)
+        val text = PlayerNowPlayingTextFormatter.buildSelectedText(
+            fileName = current.fileName,
+            typeLabel = playerTypeLabel(current),
+            formatLabel = formatLabel,
+            statusLabel = playbackStatusLabel(),
+            currentTime = playerCurrentTimeText.text,
+            duration = playerDurationText.text
+        )
         playerControlsController.updateNowPlaying(
-            title = current.fileName,
-            subtitle = "${playerTypeLabel(current)} - $formatLabel",
-            meta = "${playbackStatusLabel()} - ${playerCurrentTimeText.text}/${playerDurationText.text}"
+            title = text.title,
+            subtitle = text.subtitle,
+            meta = text.meta
         )
     }
 
