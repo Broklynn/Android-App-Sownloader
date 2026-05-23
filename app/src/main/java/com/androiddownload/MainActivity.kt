@@ -66,6 +66,8 @@ import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.player.PlayerMediaLabelResolver
 import com.androiddownload.ui.player.PlayerNowPlayingTextFormatter
+import com.androiddownload.ui.player.PlayerPlaybackFailureAction
+import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
@@ -844,20 +846,29 @@ class MainActivity : Activity() {
 
     private fun handlePlaybackStartFailure(index: Int, skipBudget: Int) {
         showToast(getString(R.string.player_playback_error))
-        if (index + 1 < playerItems.size && skipBudget > 1) {
-            startPlaybackAt(index + 1, skipBudget - 1)
-        } else {
-            stopCurrentPlayback(clearSelection = true)
+        when (
+            val action = PlayerPlaybackFailureResolver.resolveStartFailure(
+                itemCount = playerItems.size,
+                failedIndex = index,
+                skipBudget = skipBudget
+            )
+        ) {
+            is PlayerPlaybackFailureAction.SkipToNext -> startPlaybackAt(action.index, skipBudget - 1)
+            PlayerPlaybackFailureAction.Stop -> stopCurrentPlayback(clearSelection = true)
         }
     }
 
     private fun showPlaybackErrorAndMaybeSkip() {
         val index = currentPlayerIndex
         showToast(getString(R.string.player_playback_error))
-        if (index >= 0 && index + 1 < playerItems.size) {
-            startPlaybackAt(index + 1)
-        } else {
-            stopCurrentPlayback(clearSelection = true)
+        when (
+            val action = PlayerPlaybackFailureResolver.resolvePlaybackError(
+                itemCount = playerItems.size,
+                currentIndex = index
+            )
+        ) {
+            is PlayerPlaybackFailureAction.SkipToNext -> startPlaybackAt(action.index)
+            PlayerPlaybackFailureAction.Stop -> stopCurrentPlayback(clearSelection = true)
         }
     }
 
