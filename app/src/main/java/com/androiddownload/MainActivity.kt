@@ -1397,15 +1397,6 @@ class MainActivity : Activity() {
         return DownloadSummaryFormatter.normalizedProgress(download)
     }
 
-    private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
-        return DownloadStatusTextFormatter.progressLabel(
-            status = download.status,
-            progress = progress,
-            indeterminate = indeterminate,
-            labels = downloadStatusTextLabels()
-        )
-    }
-
     private fun summaryDownloadSizeText(download: DownloadEntity): String {
         return DownloadSummaryFormatter.summarySizeText(download)
     }
