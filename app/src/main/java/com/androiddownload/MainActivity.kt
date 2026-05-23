@@ -59,6 +59,8 @@ import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerAdjacentNavigator
 import com.androiddownload.ui.player.PlayerCategory
+import com.androiddownload.ui.player.PlayerCompletionAction
+import com.androiddownload.ui.player.PlayerCompletionResolver
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
@@ -978,12 +980,18 @@ class MainActivity : Activity() {
     }
 
     private fun handlePlaybackCompleted() {
-        if (currentPlayerIndex + 1 < playerItems.size) {
-            startPlaybackAt(currentPlayerIndex + 1)
-        } else {
-            stopCurrentPlayback(clearSelection = false)
-            updatePlaybackButtons()
-            updateNowPlayingInfo()
+        when (
+            val action = PlayerCompletionResolver.resolveCompletion(
+                itemCount = playerItems.size,
+                currentIndex = currentPlayerIndex
+            )
+        ) {
+            is PlayerCompletionAction.PlayNext -> startPlaybackAt(action.index)
+            PlayerCompletionAction.StopAtEnd -> {
+                stopCurrentPlayback(clearSelection = false)
+                updatePlaybackButtons()
+                updateNowPlayingInfo()
+            }
         }
     }
 
