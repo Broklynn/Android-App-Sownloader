@@ -57,14 +57,20 @@ class PlayerControlsController(
         playText: String,
         pauseText: String
     ) {
-        playerPlayPauseButton.isEnabled = hasItems
-        playerPreviousButton.isEnabled = hasItems && currentIndex > 0
-        playerNextButton.isEnabled = hasItems && currentIndex >= 0 && currentIndex < lastIndex
-        playerPlayPauseButton.text = if (isRunning) pauseText else playText
-        videoFullscreenPlayPauseButton.setImageResource(
-            if (isRunning) R.drawable.ic_pause_simple else R.drawable.ic_play_simple
+        val state = PlayerControlsStateResolver.resolvePlaybackButtons(
+            hasItems = hasItems,
+            currentIndex = currentIndex,
+            lastIndex = lastIndex,
+            isRunning = isRunning
         )
-        videoFullscreenPlayPauseButton.contentDescription = if (isRunning) pauseText else playText
+        playerPlayPauseButton.isEnabled = state.playPauseEnabled
+        playerPreviousButton.isEnabled = state.previousEnabled
+        playerNextButton.isEnabled = state.nextEnabled
+        playerPlayPauseButton.text = if (state.showPause) pauseText else playText
+        videoFullscreenPlayPauseButton.setImageResource(
+            if (state.showPause) R.drawable.ic_pause_simple else R.drawable.ic_play_simple
+        )
+        videoFullscreenPlayPauseButton.contentDescription = if (state.showPause) pauseText else playText
     }
 
     fun updateNowPlaying(title: String, subtitle: String, meta: String) {
