@@ -33,13 +33,13 @@ import com.androiddownload.core.preferences.DefaultQualityPreferences
 import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.preferences.SettingsPreferencesStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
-import com.androiddownload.core.utils.FileSizeFormatter
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
+import com.androiddownload.ui.downloads.DownloadSummaryFormatter
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.downloads.DownloadOpenRouter
@@ -80,7 +80,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.Locale
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -1388,17 +1387,11 @@ class MainActivity : Activity() {
     }
 
     private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
-        return DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
-            download.totalBytes <= 0 &&
-            download.progress <= 0 &&
-            (download.status == DownloadStatus.RUNNING || download.status == DownloadStatus.PREPARING)
+        return DownloadSummaryFormatter.isIndeterminate(download)
     }
 
     private fun normalizedProgress(download: DownloadEntity): Int {
-        return when (download.status) {
-            DownloadStatus.COMPLETED -> 100
-            else -> download.progress.coerceIn(0, 100)
-        }
+        return DownloadSummaryFormatter.normalizedProgress(download)
     }
 
     private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
@@ -1421,26 +1414,11 @@ class MainActivity : Activity() {
     }
 
     private fun summaryDownloadSizeText(download: DownloadEntity): String {
-        return when {
-            download.totalBytes > 0 -> {
-                val downloaded = FileSizeFormatter.formatBytes(download.downloadedBytes)
-                val total = FileSizeFormatter.formatBytes(download.totalBytes)
-                "$downloaded / $total"
-            }
-            download.downloadedBytes > 0 -> FileSizeFormatter.formatBytes(download.downloadedBytes)
-            download.progress > 0 -> "${download.progress.coerceIn(0, 100)}%"
-            else -> ""
-        }
+        return DownloadSummaryFormatter.summarySizeText(download)
     }
 
     private fun downloadTypeBadgeLabel(download: DownloadEntity, formatLabel: String): String {
-        val label = formatLabel.uppercase(Locale.US)
-        return when {
-            "MP3" in label -> "MP3"
-            "MP4" in label -> "MP4"
-            DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) -> "HTTP"
-            else -> "MIDIA"
-        }
+        return DownloadSummaryFormatter.typeBadgeLabel(download, formatLabel)
     }
 
     private fun renderRecentDownloads() {
