@@ -39,6 +39,8 @@ import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
+import com.androiddownload.ui.downloads.DownloadStatusTextFormatter
+import com.androiddownload.ui.downloads.DownloadStatusTextLabels
 import com.androiddownload.ui.downloads.DownloadSummaryFormatter
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
@@ -1395,22 +1397,12 @@ class MainActivity : Activity() {
     }
 
     private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
-        return when (download.status) {
-            DownloadStatus.QUEUED -> getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> getString(R.string.status_preparing_progress)
-            DownloadStatus.RUNNING -> {
-                val prefix = if (indeterminate) "" else "$progress% "
-                prefix + getString(R.string.download_progress_unknown)
-            }
-            DownloadStatus.PAUSED -> if (progress > 0) {
-                "$progress% ${getString(R.string.status_paused)}"
-            } else {
-                getString(R.string.status_paused)
-            }
-            DownloadStatus.COMPLETED -> "100% ${getString(R.string.status_completed)}"
-            DownloadStatus.FAILED -> getString(R.string.status_failed)
-            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
-        }
+        return DownloadStatusTextFormatter.progressLabel(
+            status = download.status,
+            progress = progress,
+            indeterminate = indeterminate,
+            labels = downloadStatusTextLabels()
+        )
     }
 
     private fun summaryDownloadSizeText(download: DownloadEntity): String {
@@ -1476,28 +1468,34 @@ class MainActivity : Activity() {
     }
 
     private fun downloadStatusLabel(status: DownloadStatus): String {
-        return when (status) {
-            DownloadStatus.QUEUED -> getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> getString(R.string.status_preparing)
-            DownloadStatus.RUNNING -> getString(R.string.status_running)
-            DownloadStatus.PAUSED -> getString(R.string.status_paused)
-            DownloadStatus.FAILED -> getString(R.string.status_failed)
-            DownloadStatus.COMPLETED -> getString(R.string.status_completed)
-            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
-        }
+        return DownloadStatusTextFormatter.statusLabel(
+            status = status,
+            labels = downloadStatusTextLabels()
+        )
     }
 
     private fun progressLabelForDetails(download: DownloadEntity): String {
         val progress = normalizedProgress(download)
-        return when (download.status) {
-            DownloadStatus.QUEUED -> getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> getString(R.string.status_preparing_progress)
-            DownloadStatus.RUNNING -> progressLabel(download, isIndeterminateDownload(download), progress)
-            DownloadStatus.PAUSED -> if (progress > 0) "$progress% ${getString(R.string.status_paused)}" else getString(R.string.status_paused)
-            DownloadStatus.COMPLETED -> "100% ${getString(R.string.status_completed)}"
-            DownloadStatus.FAILED -> getString(R.string.status_failed)
-            DownloadStatus.CANCELED -> getString(R.string.status_canceled)
-        }
+        return DownloadStatusTextFormatter.progressLabel(
+            status = download.status,
+            progress = progress,
+            indeterminate = isIndeterminateDownload(download),
+            labels = downloadStatusTextLabels()
+        )
+    }
+
+    private fun downloadStatusTextLabels(): DownloadStatusTextLabels {
+        return DownloadStatusTextLabels(
+            queued = getString(R.string.status_queued),
+            preparing = getString(R.string.status_preparing),
+            preparingProgress = getString(R.string.status_preparing_progress),
+            running = getString(R.string.status_running),
+            paused = getString(R.string.status_paused),
+            completed = getString(R.string.status_completed),
+            failed = getString(R.string.status_failed),
+            canceled = getString(R.string.status_canceled),
+            downloadingUnknown = getString(R.string.download_progress_unknown)
+        )
     }
 
     private fun copyDownloadUrl(download: DownloadEntity) {
