@@ -397,22 +397,12 @@ class DownloadsController(
     }
 
     private fun progressLabel(download: DownloadEntity, indeterminate: Boolean, progress: Int): String {
-        return when (download.status) {
-            DownloadStatus.QUEUED -> context.getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> context.getString(R.string.status_preparing_progress)
-            DownloadStatus.RUNNING -> {
-                val prefix = if (indeterminate) "" else "$progress% "
-                prefix + context.getString(R.string.download_progress_unknown)
-            }
-            DownloadStatus.PAUSED -> if (progress > 0) {
-                "$progress% ${context.getString(R.string.status_paused)}"
-            } else {
-                context.getString(R.string.status_paused)
-            }
-            DownloadStatus.COMPLETED -> "100% ${context.getString(R.string.status_completed)}"
-            DownloadStatus.FAILED -> context.getString(R.string.status_failed)
-            DownloadStatus.CANCELED -> context.getString(R.string.status_canceled)
-        }
+        return DownloadStatusTextFormatter.progressLabel(
+            status = download.status,
+            progress = progress,
+            indeterminate = indeterminate,
+            labels = downloadStatusTextLabels()
+        )
     }
 
     private fun summaryDownloadSizeText(download: DownloadEntity): String {
@@ -433,15 +423,24 @@ class DownloadsController(
     }
 
     private fun downloadStatusLabel(status: DownloadStatus): String {
-        return when (status) {
-            DownloadStatus.QUEUED -> context.getString(R.string.status_queued)
-            DownloadStatus.PREPARING -> context.getString(R.string.status_preparing)
-            DownloadStatus.RUNNING -> context.getString(R.string.status_running)
-            DownloadStatus.PAUSED -> context.getString(R.string.status_paused)
-            DownloadStatus.FAILED -> context.getString(R.string.status_failed)
-            DownloadStatus.COMPLETED -> context.getString(R.string.status_completed)
-            DownloadStatus.CANCELED -> context.getString(R.string.status_canceled)
-        }
+        return DownloadStatusTextFormatter.statusLabel(
+            status = status,
+            labels = downloadStatusTextLabels()
+        )
+    }
+
+    private fun downloadStatusTextLabels(): DownloadStatusTextLabels {
+        return DownloadStatusTextLabels(
+            queued = context.getString(R.string.status_queued),
+            preparing = context.getString(R.string.status_preparing),
+            preparingProgress = context.getString(R.string.status_preparing_progress),
+            running = context.getString(R.string.status_running),
+            paused = context.getString(R.string.status_paused),
+            completed = context.getString(R.string.status_completed),
+            failed = context.getString(R.string.status_failed),
+            canceled = context.getString(R.string.status_canceled),
+            downloadingUnknown = context.getString(R.string.download_progress_unknown)
+        )
     }
 
     private fun formatSpeed(speed: Long): String {
