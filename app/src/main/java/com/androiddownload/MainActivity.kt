@@ -39,6 +39,7 @@ import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
+import com.androiddownload.ui.downloads.DownloadFormatLabelFormatter
 import com.androiddownload.ui.downloads.DownloadStatusTextFormatter
 import com.androiddownload.ui.downloads.DownloadStatusTextLabels
 import com.androiddownload.ui.downloads.DownloadSummaryFormatter
@@ -1463,8 +1464,7 @@ class MainActivity : Activity() {
     }
 
     private fun formatLabelForDetails(download: DownloadEntity): String {
-        val label = YtDlpQualityOptions.labelForDownload(this, download)
-        return if (label.isBlank()) getString(R.string.download_direct) else label
+        return DownloadFormatLabelFormatter.labelForDownload(this, download)
     }
 
     private fun downloadStatusLabel(status: DownloadStatus): String {
