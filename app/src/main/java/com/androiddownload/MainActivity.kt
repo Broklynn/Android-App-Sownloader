@@ -61,6 +61,7 @@ import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
+import com.androiddownload.ui.player.PlayerMediaLabelResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
@@ -1055,25 +1056,10 @@ class MainActivity : Activity() {
     }
 
     private fun playerTypeLabel(download: DownloadEntity): String {
-        val label = formatLabelForDetails(download).uppercase(Locale.US)
-        return when {
-            "MP3" in label || download.finalFileExtension().equals("mp3", ignoreCase = true) -> "MP3"
-            "MP4" in label || download.finalFileExtension().equals("mp4", ignoreCase = true) -> "MP4"
-            else -> downloadTypeBadgeLabel(download, label)
-        }
-    }
-
-    private fun DownloadEntity.finalFileExtension(): String {
-        val uriPath = destinationUri
-            ?.takeIf { it.isNotBlank() }
-            ?.let { runCatching { Uri.parse(it).lastPathSegment }.getOrNull() }
-            .orEmpty()
-        return listOf(fileName, uriPath)
-            .firstNotNullOfOrNull { name ->
-                name.substringAfterLast('.', missingDelimiterValue = "")
-                    .takeIf { it.isNotBlank() }
-            }
-            .orEmpty()
+        return PlayerMediaLabelResolver.typeLabel(
+            download = download,
+            formatLabel = formatLabelForDetails(download)
+        )
     }
 
     private fun currentPlayingDownload(): DownloadEntity? {
