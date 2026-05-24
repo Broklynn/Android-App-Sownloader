@@ -35,7 +35,6 @@ import com.androiddownload.core.preferences.SettingsPreferencesStore
 import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
-import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
@@ -72,6 +71,7 @@ import com.androiddownload.ui.player.PlayerNowPlayingTextFormatter
 import com.androiddownload.ui.player.PlayerPlaybackFailureAction
 import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
+import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
 import kotlinx.coroutines.CancellationException
@@ -111,6 +111,7 @@ class MainActivity : Activity() {
     private lateinit var playerTabButton: Button
     private lateinit var defaultQualityValueText: TextView
     private lateinit var defaultQualityButton: Button
+    private lateinit var defaultQualityController: DefaultQualityController
     private lateinit var playerMusicChip: Button
     private lateinit var playerVideoChip: Button
     private lateinit var playerVideoFrame: View
@@ -275,6 +276,12 @@ class MainActivity : Activity() {
         )
         defaultQualityValueText = findViewById(R.id.defaultQualityValueText)
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
+        defaultQualityController = DefaultQualityController(
+            activity = this,
+            preferences = defaultQualityPreferences,
+            qualityDialogController = qualityDialogController,
+            valueText = defaultQualityValueText
+        )
         playerMusicChip = findViewById(R.id.playerMusicChip)
         playerVideoChip = findViewById(R.id.playerVideoChip)
         playerVideoFrame = findViewById(R.id.playerVideoFrame)
@@ -1812,51 +1819,19 @@ class MainActivity : Activity() {
     }
 
     private fun showDefaultQualityDialog() {
-        val options = defaultQualityOptions()
-        val currentIndex = options.indexOfFirst {
-            it.preferenceValue == selectedDefaultQualityOption().preferenceValue
-        }.coerceAtLeast(0)
-        qualityDialogController.showDefaultQualityDialog(options, currentIndex) { option ->
-            saveDefaultQualityOption(option)
-            updateDefaultQualityText()
-        }
+        defaultQualityController.showDialog()
     }
 
     private fun updateDefaultQualityText() {
-        defaultQualityValueText.text = getString(
-            R.string.default_quality_selected,
-            selectedDefaultQualityOption().label
-        )
+        defaultQualityController.updateText()
     }
 
     private fun selectedDefaultQualityOption(): QualityOptionUi {
-        val savedValue = defaultQualityPreferences.load()
-        return defaultQualityOptions().firstOrNull { it.preferenceValue == savedValue }
-            ?: defaultQualityOptions().first()
-    }
-
-    private fun saveDefaultQualityOption(option: QualityOptionUi) {
-        defaultQualityPreferences.save(option.preferenceValue)
-    }
-
-    private fun defaultQualityOptions(): List<QualityOptionUi> {
-        return listOf(
-            QualityOptionUi(
-                label = getString(R.string.default_quality_ask_always),
-                preferenceValue = DefaultQualityPreferences.DEFAULT_QUALITY_ASK_VALUE,
-                formatSelector = null
-            )
-        ) + downloadQualityOptions()
+        return defaultQualityController.selectedOption()
     }
 
     private fun downloadQualityOptions(): List<QualityOptionUi> {
-        return YtDlpQualityOptions.build(this, null).map { option ->
-            QualityOptionUi(
-                label = option.label,
-                preferenceValue = option.formatSelector,
-                formatSelector = option.formatSelector
-            )
-        }
+        return defaultQualityController.downloadQualityOptions()
     }
 
     override fun onBackPressed() {
