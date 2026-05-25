@@ -32,10 +32,8 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.preferences.DefaultQualityPreferences
 import com.androiddownload.core.preferences.RecentDownloadsStore
 import com.androiddownload.core.preferences.SettingsPreferencesStore
-import com.androiddownload.core.utils.DownloadDestinationResolver
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
-import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
 import com.androiddownload.ui.downloads.DownloadFormatLabelFormatter
@@ -73,6 +71,7 @@ import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
+import com.androiddownload.ui.settings.DownloadLocationController
 import com.androiddownload.ui.settings.SettingsController
 import com.androiddownload.ui.settings.YtDlpUpdateController
 import kotlinx.coroutines.CancellationException
@@ -106,6 +105,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
     private lateinit var settingsController: SettingsController
+    private lateinit var downloadLocationController: DownloadLocationController
     private lateinit var ytDlpUpdateController: YtDlpUpdateController
     private lateinit var mainNavigationController: MainNavigationController
     private lateinit var homeTabButton: Button
@@ -398,14 +398,20 @@ class MainActivity : Activity() {
             aboutAppButton = findViewById(R.id.aboutAppButton),
             settingsCloseButton = findViewById(R.id.settingsCloseButton),
             callbacks = SettingsController.Callbacks(
-                onChooseDownloadLocation = ::chooseDownloadLocation,
-                onUseDefaultDownloadLocation = ::useDefaultDownloadLocation,
+                onChooseDownloadLocation = { downloadLocationController.chooseDownloadLocation() },
+                onUseDefaultDownloadLocation = { downloadLocationController.useDefaultDownloadLocation() },
                 onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
                 onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
                 onDiagnostics = ::showDiagnosticsDialog,
                 onAbout = ::showAboutDialog,
                 onCloseSettings = ::closeSettingsOverlay
             )
+        )
+        downloadLocationController = DownloadLocationController(
+            activity = this,
+            settingsController = settingsController,
+            requestCode = REQUEST_DOWNLOAD_TREE,
+            showToast = ::showToast
         )
         ytDlpUpdateController = YtDlpUpdateController(
             context = this,
@@ -455,7 +461,7 @@ class MainActivity : Activity() {
         }
 
         updateDefaultQualityText()
-        updateDownloadLocationText()
+        downloadLocationController.updateDownloadLocationText()
         renderHomeRecentDownloads()
         renderRecentDownloads()
         showHome()
@@ -472,36 +478,7 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_DOWNLOAD_TREE) return
-        if (resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        val flags = data.flags and (
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-        try {
-            contentResolver.takePersistableUriPermission(uri, flags)
-            DownloadDestinationResolver.setCustomTreeUri(this, uri)
-            updateDownloadLocationText()
-            YtDlpDiagnostics.record(
-                context = this,
-                url = "app",
-                option = "destino",
-                attempt = "escolher pasta",
-                result = "pasta customizada escolhida",
-                error = DownloadDestinationResolver.summarizeUri(uri)
-            )
-            showToast(getString(R.string.download_location_saved))
-        } catch (exception: SecurityException) {
-            showToast(getString(R.string.download_custom_folder_access_error))
-            YtDlpDiagnostics.record(
-                context = this,
-                url = "app",
-                option = "destino",
-                attempt = "escolher pasta",
-                result = "falha ao persistir permissao",
-                error = exception.message
-            )
-        }
+        if (downloadLocationController.handleActivityResult(requestCode, resultCode, data)) return
     }
 
     override fun onDestroy() {
@@ -1560,7 +1537,7 @@ class MainActivity : Activity() {
         playerContainer.visibility = View.GONE
         downloadsContainer.visibility = View.GONE
         updateDefaultQualityText()
-        updateDownloadLocationText()
+        downloadLocationController.updateDownloadLocationText()
         ytDlpUpdateController.updateUiState()
         ytDlpUpdateController.updateAutoUpdateUiState()
         updateSelectedTab(null)
@@ -1608,22 +1585,6 @@ class MainActivity : Activity() {
         return false
     }
 
-    private fun updateDownloadLocationText() {
-        val customUri = DownloadDestinationResolver.customTreeUri(this)
-        val locationText = if (customUri != null) {
-            getString(
-                R.string.download_location_selected,
-                DownloadDestinationResolver.summarizeUri(customUri)
-            )
-        } else {
-            getString(
-                R.string.download_location_default,
-                DownloadDestinationResolver.defaultDestinationLabel()
-            )
-        }
-        settingsController.updateDownloadLocationText(locationText)
-    }
-
     private fun showAboutDialog() {
         val versionName = runCatching {
             @Suppress("DEPRECATION")
@@ -1648,29 +1609,6 @@ class MainActivity : Activity() {
 
     private fun showDiagnosticsDialog() {
         diagnosticsController.show()
-    }
-
-    private fun chooseDownloadLocation() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
-        }
-        startActivityForResult(intent, REQUEST_DOWNLOAD_TREE)
-    }
-
-    private fun useDefaultDownloadLocation() {
-        DownloadDestinationResolver.clearCustomTreeUri(this)
-        updateDownloadLocationText()
-        YtDlpDiagnostics.record(
-            context = this,
-            url = "app",
-            option = "destino",
-            attempt = "restaurar padrao",
-            result = "pasta padrao restaurada"
-        )
-        showToast(getString(R.string.download_location_default_restored))
     }
 
     private fun updateSelectedTab(selectedTab: Button?) {
