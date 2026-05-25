@@ -74,6 +74,7 @@ import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.SettingsController
+import com.androiddownload.ui.settings.YtDlpUpdateController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
     private lateinit var settingsController: SettingsController
+    private lateinit var ytDlpUpdateController: YtDlpUpdateController
     private lateinit var mainNavigationController: MainNavigationController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
@@ -160,8 +162,6 @@ class MainActivity : Activity() {
     private var previousSystemUiVisibility = 0
     private var fullscreenChromeApplied = false
     private var hasActiveDownloads = false
-    private var ytDlpUpdateInProgress = false
-    private var ytDlpUpdateMessage: String? = null
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var currentScreen = PrimaryScreen.HOME
     private var backInvokedCallback: OnBackInvokedCallback? = null
@@ -400,12 +400,24 @@ class MainActivity : Activity() {
             callbacks = SettingsController.Callbacks(
                 onChooseDownloadLocation = ::chooseDownloadLocation,
                 onUseDefaultDownloadLocation = ::useDefaultDownloadLocation,
-                onUpdateYtDlp = ::updateYtDlpManually,
-                onToggleAutoUpdateYtDlp = ::toggleAutoUpdateYtDlp,
+                onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
+                onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
                 onDiagnostics = ::showDiagnosticsDialog,
                 onAbout = ::showAboutDialog,
                 onCloseSettings = ::closeSettingsOverlay
             )
+        )
+        ytDlpUpdateController = YtDlpUpdateController(
+            context = this,
+            settingsController = settingsController,
+            settingsPreferencesStore = settingsPreferencesStore,
+            scope = scope,
+            updateManually = {
+                withContext(Dispatchers.IO) {
+                    app.container.ytDlpDownloader.updateManually()
+                }
+            },
+            showToast = ::showToast
         )
 
         homeTabButton.setOnClickListener { showHome() }
@@ -432,10 +444,13 @@ class MainActivity : Activity() {
                 downloadsController.submitDownloads(downloads)
                 renderHomeRecentDownloads()
                 renderPlayerList()
-                hasActiveDownloads = downloads.any {
+                val newHasActiveDownloads = downloads.any {
                     it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PREPARING
                 }
-                updateYtDlpUpdateUiState()
+                if (hasActiveDownloads != newHasActiveDownloads) {
+                    hasActiveDownloads = newHasActiveDownloads
+                    ytDlpUpdateController.setHasActiveDownloads(newHasActiveDownloads)
+                }
             }
         }
 
@@ -1546,8 +1561,8 @@ class MainActivity : Activity() {
         downloadsContainer.visibility = View.GONE
         updateDefaultQualityText()
         updateDownloadLocationText()
-        updateYtDlpUpdateUiState()
-        updateAutoUpdateYtDlpUiState()
+        ytDlpUpdateController.updateUiState()
+        ytDlpUpdateController.updateAutoUpdateUiState()
         updateSelectedTab(null)
         settingsController.show(scrollToDownloadLocation)
     }
@@ -1656,54 +1671,6 @@ class MainActivity : Activity() {
             result = "pasta padrao restaurada"
         )
         showToast(getString(R.string.download_location_default_restored))
-    }
-
-    private fun updateYtDlpManually() {
-        if (ytDlpUpdateInProgress) return
-        if (hasActiveDownloads) {
-            showToast(getString(R.string.update_ytdlp_busy))
-            updateYtDlpUpdateUiState()
-            return
-        }
-
-        ytDlpUpdateInProgress = true
-        ytDlpUpdateMessage = null
-        updateYtDlpUpdateUiState()
-
-        scope.launch {
-            val success = withContext(Dispatchers.IO) {
-                app.container.ytDlpDownloader.updateManually()
-            }
-            ytDlpUpdateInProgress = false
-            ytDlpUpdateMessage = getString(
-                if (success) R.string.update_ytdlp_success else R.string.update_ytdlp_failed
-            )
-            updateYtDlpUpdateUiState()
-        }
-    }
-
-    private fun updateYtDlpUpdateUiState() {
-        settingsController.setYtDlpUpdateState(
-            isInProgress = ytDlpUpdateInProgress,
-            hasActiveDownloads = hasActiveDownloads,
-            message = ytDlpUpdateMessage,
-            inProgressText = getString(R.string.update_ytdlp_in_progress),
-            busyText = getString(R.string.update_ytdlp_busy)
-        )
-    }
-
-    private fun toggleAutoUpdateYtDlp() {
-        settingsPreferencesStore.toggleAutoUpdateYtDlpOnYoutubeErrors()
-        updateAutoUpdateYtDlpUiState()
-    }
-
-    private fun updateAutoUpdateYtDlpUiState() {
-        val enabled = settingsPreferencesStore.isAutoUpdateYtDlpOnYoutubeErrorsEnabled()
-        settingsController.setAutoUpdateEnabled(
-            isEnabled = enabled,
-            enabledText = getString(R.string.auto_update_ytdlp_enabled),
-            disabledText = getString(R.string.auto_update_ytdlp_disabled)
-        )
     }
 
     private fun updateSelectedTab(selectedTab: Button?) {
