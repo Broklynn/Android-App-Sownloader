@@ -36,13 +36,10 @@ import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.download.service.DownloadForegroundService
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
-import com.androiddownload.ui.downloads.DownloadFormatLabelFormatter
-import com.androiddownload.ui.downloads.DownloadStatusTextFormatter
-import com.androiddownload.ui.downloads.DownloadStatusTextLabels
-import com.androiddownload.ui.downloads.DownloadSummaryFormatter
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.downloads.DownloadOpenRouter
+import com.androiddownload.ui.downloads.DownloadTextProvider
 import com.androiddownload.ui.common.DarkDialogButton
 import com.androiddownload.ui.common.DarkDialogFactory
 import com.androiddownload.ui.home.ClipboardLinkPromptController
@@ -105,6 +102,7 @@ class MainActivity : Activity() {
     private lateinit var clipboardLinkPromptController: ClipboardLinkPromptController
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
+    private lateinit var downloadTextProvider: DownloadTextProvider
     private lateinit var settingsController: SettingsController
     private lateinit var settingsInfoController: SettingsInfoController
     private lateinit var downloadLocationController: DownloadLocationController
@@ -184,16 +182,16 @@ class MainActivity : Activity() {
             showPlayer = ::showPlayer,
             startPlaybackAt = { index -> startPlaybackAt(index) },
             openExternal = { download -> fileActionsController.open(download) },
-            formatLabelProvider = ::formatLabelForDetails
+            formatLabelProvider = downloadTextProvider::formatLabel
         )
     private val playerListController: PlayerListController
         get() = PlayerListController()
     private val downloadDetailsDialogController: DownloadDetailsDialogController
         get() = DownloadDetailsDialogController(
             activity = this,
-            statusLabelProvider = ::downloadStatusLabel,
-            formatLabelProvider = ::formatLabelForDetails,
-            progressLabelProvider = ::progressLabelForDetails,
+            statusLabelProvider = downloadTextProvider::statusLabel,
+            formatLabelProvider = downloadTextProvider::formatLabel,
+            progressLabelProvider = downloadTextProvider::progressLabelForDetails,
             onCopyUrl = ::copyDownloadUrl,
             onOpen = ::openDownload,
             onShare = { download -> fileActionsController.share(download) }
@@ -229,6 +227,7 @@ class MainActivity : Activity() {
         requestNotificationPermission()
 
         val app = application as AndroidDownloadApp
+        downloadTextProvider = DownloadTextProvider(this)
         homeController = HomeController(
             urlInput = findViewById(R.id.urlInput),
             downloadButton = findViewById(R.id.downloadButton),
@@ -259,10 +258,10 @@ class MainActivity : Activity() {
             context = this,
             section = homeRecentDownloadsSection,
             list = homeRecentDownloadsList,
-            formatLabelProvider = ::formatLabelForDetails,
-            statusLabelProvider = { download -> downloadStatusLabel(download.status) },
-            sizeTextProvider = ::summaryDownloadSizeText,
-            badgeLabelProvider = ::downloadTypeBadgeLabel,
+            formatLabelProvider = downloadTextProvider::formatLabel,
+            statusLabelProvider = { download -> downloadTextProvider.statusLabel(download.status) },
+            sizeTextProvider = downloadTextProvider::summarySizeText,
+            badgeLabelProvider = downloadTextProvider::typeBadgeLabel,
             onItemClick = ::showDownloadDetailsDialog
         )
         homeTabButton = findViewById(R.id.homeTabButton)
@@ -303,7 +302,7 @@ class MainActivity : Activity() {
             context = this,
             playerList = findViewById(R.id.playerList),
             playerEmptyText = findViewById(R.id.playerEmptyText),
-            formatLabelProvider = ::formatLabelForDetails,
+            formatLabelProvider = downloadTextProvider::formatLabel,
             onItemClick = { index -> startPlaybackAt(index) }
         )
         videoFullscreenOverlay = findViewById(R.id.videoFullscreenOverlay)
@@ -698,7 +697,7 @@ class MainActivity : Activity() {
             currentIndex = currentPlayerIndex,
             currentPlayingId = previousPlayingId,
             matchesPlayerCategory = { download, category ->
-                DownloadOpenRouter.matchesPlayerCategory(download, category, ::formatLabelForDetails)
+                DownloadOpenRouter.matchesPlayerCategory(download, category, downloadTextProvider::formatLabel)
             }
         )
         playerItems = state.items
@@ -1070,7 +1069,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val formatLabel = formatLabelForDetails(current)
+        val formatLabel = downloadTextProvider.formatLabel(current)
         val text = PlayerNowPlayingTextFormatter.buildSelectedText(
             fileName = current.fileName,
             typeLabel = playerTypeLabel(current),
@@ -1098,7 +1097,7 @@ class MainActivity : Activity() {
     private fun playerTypeLabel(download: DownloadEntity): String {
         return PlayerMediaLabelResolver.typeLabel(
             download = download,
-            formatLabel = formatLabelForDetails(download)
+            formatLabel = downloadTextProvider.formatLabel(download)
         )
     }
 
@@ -1394,22 +1393,6 @@ class MainActivity : Activity() {
         homeRecentDownloadsRenderer.render(downloads)
     }
 
-    private fun isIndeterminateDownload(download: DownloadEntity): Boolean {
-        return DownloadSummaryFormatter.isIndeterminate(download)
-    }
-
-    private fun normalizedProgress(download: DownloadEntity): Int {
-        return DownloadSummaryFormatter.normalizedProgress(download)
-    }
-
-    private fun summaryDownloadSizeText(download: DownloadEntity): String {
-        return DownloadSummaryFormatter.summarySizeText(download)
-    }
-
-    private fun downloadTypeBadgeLabel(download: DownloadEntity, formatLabel: String): String {
-        return DownloadSummaryFormatter.typeBadgeLabel(download, formatLabel)
-    }
-
     private fun renderRecentDownloads() {
         val recentUrls = recentDownloadsStore.load()
         recentDownloadsSection.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
@@ -1457,41 +1440,6 @@ class MainActivity : Activity() {
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
         downloadDetailsDialogController.show(download)
-    }
-
-    private fun formatLabelForDetails(download: DownloadEntity): String {
-        return DownloadFormatLabelFormatter.labelForDownload(this, download)
-    }
-
-    private fun downloadStatusLabel(status: DownloadStatus): String {
-        return DownloadStatusTextFormatter.statusLabel(
-            status = status,
-            labels = downloadStatusTextLabels()
-        )
-    }
-
-    private fun progressLabelForDetails(download: DownloadEntity): String {
-        val progress = normalizedProgress(download)
-        return DownloadStatusTextFormatter.progressLabel(
-            status = download.status,
-            progress = progress,
-            indeterminate = isIndeterminateDownload(download),
-            labels = downloadStatusTextLabels()
-        )
-    }
-
-    private fun downloadStatusTextLabels(): DownloadStatusTextLabels {
-        return DownloadStatusTextLabels(
-            queued = getString(R.string.status_queued),
-            preparing = getString(R.string.status_preparing),
-            preparingProgress = getString(R.string.status_preparing_progress),
-            running = getString(R.string.status_running),
-            paused = getString(R.string.status_paused),
-            completed = getString(R.string.status_completed),
-            failed = getString(R.string.status_failed),
-            canceled = getString(R.string.status_canceled),
-            downloadingUnknown = getString(R.string.download_progress_unknown)
-        )
     }
 
     private fun copyDownloadUrl(download: DownloadEntity) {
