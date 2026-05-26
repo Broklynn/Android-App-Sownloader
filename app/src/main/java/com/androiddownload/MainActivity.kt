@@ -1621,13 +1621,6 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
-    private fun normalizeMimeType(mimeType: String?): String? {
-        return mimeType
-            ?.substringBefore(';')
-            ?.trim()
-            ?.takeIf { it.contains('/') }
-    }
-
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
@@ -1639,8 +1632,6 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
