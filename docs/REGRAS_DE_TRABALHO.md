@@ -40,7 +40,19 @@ Não fazer agora:
 - alteração em Quick Share fora do escopo;
 - uso de cookies/login/tokens/DRM/paywall/conteúdo privado.
 
-O foco atual é reduzir arquivos grandes, principalmente `MainActivity` e futuramente `YtDlpDownloader`, mantendo o app funcional.
+Checkpoint atual: a `MainActivity` ja foi reduzida de aproximadamente 1900+ linhas para cerca de 1643 linhas. As extracoes seguras fora do player foram praticamente concluidas.
+
+O foco estrutural imediato deixa de ser micro-extrair a `MainActivity` fora do player. O proximo bloco relevante deve ser tratado como milestone proprio de player/arquitetura de player.
+
+Nao fazer agora:
+
+- criar controllers pequenos com ganho real baixo;
+- mexer em player real/fullscreen/back navigation sem investigacao e plano;
+- adicionar Media3/ExoPlayer diretamente;
+- misturar troca de engine com alteracao visual;
+- mexer em downloaders, Room, Quick Share ou service/queue dentro do milestone do player.
+
+`YtDlpDownloader` continua candidato futuro, mas nao deve ser misturado com o milestone do player.
 
 ## Como trabalhar com Codex/Gemini/outra IA
 
@@ -122,6 +134,16 @@ Quando for apenas documentação:
 - build não é obrigatório;
 - explicar que não rodou build porque não houve código, XML ou Gradle alterado;
 - ainda assim rodar `git status --short`.
+
+Quando tocar player, fullscreen ou runtime de midia:
+
+- rodar `testDebugUnitTest`;
+- rodar `assembleDebug`;
+- rodar `installDebug`;
+- validar manualmente no Android 16 fisico `SM-M346B`;
+- usar Android 12 emulador como secundario se disponivel;
+- pausar/parar audio ou video assim que a validacao terminar;
+- evitar `uiautomator dump` enquanto audio/video/sheet/progresso estiver mantendo a UI dinamica.
 
 ## Commits
 
@@ -231,4 +253,3 @@ Antes de qualquer alteração, uma nova IA deve ler:
 - `docs/REGRAS_DE_TRABALHO.md`.
 
 Depois da leitura, a IA deve confirmar o escopo da etapa, preservar as regras do projeto e trabalhar de forma incremental.
-

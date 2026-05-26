@@ -147,6 +147,38 @@ Campos atuais de `DownloadEntity`:
 
 ## Refatorações já feitas
 
+### Checkpoint pos-refatoracao da MainActivity
+
+A `MainActivity.kt` foi reduzida de aproximadamente 1900+ linhas para cerca de 1643 linhas.
+
+As refatoracoes seguras fora do player foram praticamente concluidas. Os blocos restantes com ganho relevante sao sensiveis:
+
+- player real/playback;
+- fullscreen;
+- back navigation;
+- start de download/service/queue;
+- intents/share/clipboard;
+- onCreate/setup/wiring.
+
+As investigacoes recentes concluiram que nao vale continuar criando controllers pequenos fora do player quando o ganho real for baixo. O proximo passo estrutural deve ser tratado como milestone proprio de player/arquitetura de player.
+
+Refatoracoes recentes consolidadas por area:
+
+- Home: `HomeDownloadRequestController`, `HomeRecentUrlController`, `HomeRecentDownloadsRenderer`.
+- Downloads: `DownloadTextProvider`, `DownloadSummaryFormatter`, `DownloadStatusTextFormatter`, `DownloadFormatLabelFormatter`, `DownloadItemSizeFormatter`, `ClearFinishedDownloadsController`, reaproveitamento de formatadores em `DownloadsController` e `DownloadsAdapter`.
+- Settings: `DefaultQualityController`, `YtDlpUpdateController`, `DownloadLocationController`, `SettingsInfoController`.
+- Navigation: `MainNavigationController`, `MainHeaderController`.
+- Player helpers puros: `PlayerListController`, `PlayerProgressCalculator`, `PlayerMediaLabelResolver`, `PlayerNowPlayingTextFormatter`, `PlayerControlsStateResolver`, `PlayerAdjacentNavigator`, `PlayerCompletionResolver`, `PlayerPlaybackFailureResolver`.
+- Qualidade yt-dlp: nucleo puro de `YtDlpQualityOptions` com testes JVM.
+- Limpeza: helpers privados mortos removidos da `MainActivity`.
+
+Decisao atual:
+
+- pausar micro-extracoes estruturais fora do player;
+- nao criar controller pequeno apenas para esconder funcao simples;
+- nao mexer em player real/fullscreen/back navigation sem milestone proprio;
+- preparar investigacao dedicada do player antes de qualquer migracao para Media3/ExoPlayer.
+
 ### DownloadOpenRouter
 
 Arquivo: `app/src/main/java/com/androiddownload/ui/downloads/DownloadOpenRouter.kt`
@@ -201,4 +233,3 @@ No estado documentado:
 - Downloads concluídos MP3/MP4 abrem no player interno.
 - Arquivos não mídia abrem externamente.
 - Subpastas reais funcionam para novos downloads no destino padrão.
-

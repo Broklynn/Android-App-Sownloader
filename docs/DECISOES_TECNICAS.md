@@ -201,20 +201,43 @@ Dispositivo principal de validação: Android 16 físico `SM-M346B`.
 
 ## Refatoração estrutural
 
-Decisão: extrair responsabilidades em etapas pequenas.
+Decisão: extrair responsabilidades em etapas pequenas, mas pausar micro-extrações quando o ganho real ficar baixo.
 
 Já extraído:
 
 - `DownloadOpenRouter`;
 - `DownloadDetailsDialogController`;
 - `ClipboardLinkPromptController`.
+- `HomeDownloadRequestController`;
+- `HomeRecentUrlController`;
+- `MainNavigationController`;
+- `MainHeaderController`;
+- `DownloadTextProvider`;
+- `DownloadSummaryFormatter`;
+- `DownloadStatusTextFormatter`;
+- `DownloadFormatLabelFormatter`;
+- `DownloadItemSizeFormatter`;
+- `ClearFinishedDownloadsController`;
+- `DefaultQualityController`;
+- `YtDlpUpdateController`;
+- `DownloadLocationController`;
+- `SettingsInfoController`;
+- `PlayerListController`;
+- `PlayerProgressCalculator`;
+- `PlayerMediaLabelResolver`;
+- `PlayerNowPlayingTextFormatter`;
+- `PlayerControlsStateResolver`;
+- `PlayerAdjacentNavigator`;
+- `PlayerCompletionResolver`;
+- `PlayerPlaybackFailureResolver`;
+- nucleo puro de `YtDlpQualityOptions` com testes JVM.
 
-Próximos alvos prováveis:
+Checkpoint atual:
 
-- fluxo de request de download da Home;
-- navegação/tabs;
-- partes do player;
-- componentes de `YtDlpDownloader`.
+- `MainActivity.kt` esta em cerca de 1643 linhas;
+- refatoracoes seguras fora do player estao praticamente concluidas;
+- intents/share/clipboard, onCreate/setup/wiring e download start/service/queue foram investigados e recusados por baixo ganho seguro ou risco alto;
+- player real/playback/fullscreen/back navigation deve ficar para milestone proprio.
 
 Motivo:
 
@@ -223,3 +246,10 @@ Motivo:
 - preservar comportamento;
 - facilitar rollback mental se algo quebrar.
 
+Regra atual:
+
+- nao criar controller pequeno apenas para esconder funcao simples;
+- nao mexer em player real/fullscreen/back navigation sem investigacao dedicada;
+- nao adicionar Media3/ExoPlayer diretamente;
+- nao misturar troca de engine com alteracao visual;
+- nao alterar downloaders, Room, Quick Share ou service/queue dentro do milestone do player.

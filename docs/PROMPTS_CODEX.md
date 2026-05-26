@@ -24,12 +24,28 @@ O projeto está em fase de refatoração estrutural. Não implemente features no
 
 Prioridades atuais:
 
-- reduzir `MainActivity`;
+- manter o checkpoint da `MainActivity`, hoje em cerca de 1643 linhas;
+- pausar micro-extracoes fora do player quando o ganho real for baixo;
+- preparar milestone proprio para player/arquitetura de player;
 - preservar Quick Share, Home, player, downloads e subpastas;
 - futuramente reduzir `YtDlpDownloader`;
 - manter testes/build funcionando.
 
 Não usar cookies, login, headers privados, DRM, paywall ou qualquer mecanismo para acessar conteúdo privado.
+
+## Checkpoint pos-refatoracao para novos prompts
+
+As extracoes seguras fora do player foram praticamente concluidas. Ja foram investigados e recusados novos recortes em intents/share/clipboard, onCreate/setup/wiring e download start/service/queue.
+
+Para proximas etapas:
+
+- sempre rodar `git status --short` antes de investigar ou editar;
+- nao fazer `git add`, commit ou push;
+- o usuario faz commit manualmente;
+- nao pedir permissao para acoes basicas quando o prompt ja autorizar leitura, busca, diff e testes;
+- parar e reportar se a etapa exigir alterar fora do escopo;
+- nao adicionar Media3/ExoPlayer sem investigacao e plano;
+- ao tocar player, validar no Android 16 fisico `SM-M346B` e pausar/parar audio ou video apos validar.
 
 ## Prompt padrão de refatoração estrutural
 

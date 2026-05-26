@@ -69,7 +69,7 @@ Não fazer agora:
 Foco atual:
 
 - separar arquivos gigantes;
-- reduzir `MainActivity`;
+- manter o checkpoint da `MainActivity` apos reducao para cerca de 1643 linhas;
 - reduzir futuramente `YtDlpDownloader`;
 - manter tudo 100% funcional;
 - preservar testes e build;
@@ -79,7 +79,7 @@ Foco atual:
 
 Componentes importantes no estado atual:
 
-- `MainActivity`: ainda concentra muita orquestração de UI, player, Home e callbacks.
+- `MainActivity`: ainda concentra o player real, fullscreen, back navigation e wiring principal. As refatoracoes seguras fora do player foram praticamente concluidas.
 - `QuickShareDownloadActivity`: entrada via compartilhamento Android.
 - `AppContainer`: wiring de dependências.
 - `AppDatabase`, `DownloadEntity`, `DownloadDao`: persistência Room.
@@ -103,6 +103,20 @@ Componentes importantes no estado atual:
 - `HttpHeadersJsonParser`: aplica headers preservados com allowlist segura.
 - Player interno: reprodução de MP3/MP4 concluídos.
 - `SettingsController` e `DiagnosticsController`: configurações, diagnóstico e telas auxiliares.
+- Controllers/helpers recentes: `HomeDownloadRequestController`, `HomeRecentUrlController`, `MainNavigationController`, `MainHeaderController`, `DownloadTextProvider`, `ClearFinishedDownloadsController`, `DefaultQualityController`, `YtDlpUpdateController`, `DownloadLocationController`, `SettingsInfoController` e helpers puros do player.
+
+## Checkpoint atual de arquitetura
+
+A decisao atual e pausar micro-extracoes estruturais fora do player. As investigacoes recentes recusaram novos recortes em intents/share/clipboard, onCreate/setup/wiring e download start/service/queue por baixo ganho seguro ou risco alto.
+
+O proximo milestone recomendado e player/arquitetura de player:
+
+- investigar o uso atual de `MediaPlayer` e `VideoView`;
+- mapear audio, video inline, fullscreen, seek, completion, skip e lifecycle;
+- avaliar uma camada `InternalPlayerEngine`;
+- avaliar Media3/ExoPlayer futuramente, sem adicionar dependencia agora.
+
+Antes desse milestone, nao mexer em player real, fullscreen, back navigation, downloaders, Room, Quick Share ou service/queue.
 
 ## Como pensar antes de mexer no projeto
 
@@ -118,4 +132,3 @@ Antes de alterar qualquer código:
 8. Conferir `git status --short` antes de recomendar commit.
 
 Refatoração pronta significa: build passando, testes relevantes passando, fluxo afetado validado, comportamento preservado e diff limitado ao objetivo.
-

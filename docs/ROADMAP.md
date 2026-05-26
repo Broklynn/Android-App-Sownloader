@@ -16,49 +16,50 @@ Reduzir acoplamento e tamanho dos arquivos críticos sem quebrar fluxos existent
 - preservar UI visual e comportamento;
 - preparar o projeto para crescimento futuro.
 
-## Ordem recomendada
+## Checkpoint pos-refatoracao da MainActivity
 
-1. Confirmar commit/push do `ClipboardLinkPromptController`, se ainda não foi feito.
-2. Fazer checkpoint específico do `ClipboardLinkPromptController`.
-3. Investigar e extrair o fluxo de request de download da Home.
-4. Investigar navegação/tabs.
-5. Extrair partes do player em etapas pequenas.
-6. Dividir `YtDlpDownloader` em componentes menores.
-7. Revisar `HttpDownloader`, se necessário.
-8. Criar documentação e checklists de release.
-9. Só depois voltar a pensar em features novas.
+A `MainActivity.kt` foi reduzida de aproximadamente 1900+ linhas para cerca de 1643 linhas.
 
-## Próxima extração sugerida
+As extracoes seguras fora do player foram praticamente concluidas. As investigacoes recentes recusaram novas extracoes em:
 
-Investigar o fluxo de request de download da Home antes de implementar.
+- intents/share/clipboard;
+- onCreate/setup/wiring;
+- download start/service/queue.
 
-Possíveis nomes:
+Motivo: o ganho seguro restante e baixo, e o ganho maior exigiria tocar em fluxos sensiveis. Nao continuar criando controllers pequenos apenas para esconder funcoes simples.
 
-- `HomeDownloadRequestController`;
-- `DownloadRequestFlowController`.
+## Ordem recomendada atualizada
 
-Responsabilidade provável:
+1. Manter o checkpoint pos-refatoracao documentado.
+2. Pausar micro-extracoes estruturais fora do player.
+3. Preparar milestone proprio para player/arquitetura de player.
+4. Investigar o player atual antes de qualquer mudanca em engine.
+5. Avaliar uma camada `InternalPlayerEngine` apenas depois da investigacao.
+6. Avaliar Media3/ExoPlayer futuramente, sem adicionar dependencia agora.
+7. Dividir `YtDlpDownloader` em componentes menores somente em milestone posterior.
+8. Criar checklists de release quando os blocos estruturais maiores estiverem estabilizados.
 
-- receber link e intenção da Home;
-- validar entrada;
-- coordenar callbacks para iniciar download;
-- preservar a decisão de que clipboard prompt só preenche a Home;
-- preservar a decisão de que HTTP direto compartilhado não inicia automaticamente.
+## Proximo milestone: player
 
-Antes de criar a classe, mapear responsabilidades atuais na `MainActivity`, callbacks necessários, riscos e testes manuais.
+Nao mexer no player real de forma incremental sem milestone proprio.
 
-## Player: etapas pequenas
+Investigacao inicial recomendada:
 
-Não extrair o player inteiro de uma vez.
+1. Mapear uso atual de `MediaPlayer` e `VideoView`.
+2. Mapear estados de audio, video inline e fullscreen.
+3. Mapear seek, completion, skip, pause/resume e lifecycle.
+4. Mapear acoplamento com `DownloadOpenRouter`, `PlayerCategory` e lista filtrada.
+5. Mapear fullscreen/back navigation e decidir o que fica fora do primeiro recorte.
+6. Avaliar se uma interface `InternalPlayerEngine` reduz risco antes de qualquer troca para Media3/ExoPlayer.
 
-Sequência mais segura:
+Restricoes do milestone:
 
-1. Estado/categoria do player.
-2. Lista usada pelo player.
-3. Controles.
-4. Fullscreen, apenas se for seguro.
-
-Critério: cada etapa deve preservar abertura interna de MP3/MP4, índice na lista filtrada e fallback externo.
+- nao adicionar Media3 diretamente;
+- nao adicionar dependencia antes de plano e comparativo;
+- nao alterar UI visual junto com troca de engine;
+- nao misturar fullscreen/back navigation sem plano;
+- nao alterar downloaders, Room, Quick Share ou service/queue;
+- preservar abertura interna de MP3/MP4, indice na lista filtrada e fallback externo.
 
 ## YtDlpDownloader: divisão futura
 
@@ -121,4 +122,3 @@ Só voltar a features novas quando:
 - `YtDlpDownloader` tiver componentes menores ou pelo menos limites claros;
 - existir checklist de release;
 - os fluxos principais de Quick Share, Home, player, subpastas e downloads continuarem validados.
-
