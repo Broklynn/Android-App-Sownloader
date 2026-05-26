@@ -35,13 +35,12 @@ import com.androiddownload.core.preferences.SettingsPreferencesStore
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.download.service.DownloadForegroundService
+import com.androiddownload.ui.downloads.ClearFinishedDownloadsController
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
 import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.downloads.DownloadOpenRouter
 import com.androiddownload.ui.downloads.DownloadTextProvider
-import com.androiddownload.ui.common.DarkDialogButton
-import com.androiddownload.ui.common.DarkDialogFactory
 import com.androiddownload.ui.home.ClipboardLinkPromptController
 import com.androiddownload.ui.home.HomeDownloadRequestController
 import com.androiddownload.ui.home.HomeController
@@ -105,6 +104,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentUrlController: HomeRecentUrlController
     private lateinit var downloadsController: DownloadsController
     private lateinit var downloadTextProvider: DownloadTextProvider
+    private lateinit var clearFinishedDownloadsController: ClearFinishedDownloadsController
     private lateinit var settingsController: SettingsController
     private lateinit var settingsInfoController: SettingsInfoController
     private lateinit var downloadLocationController: DownloadLocationController
@@ -394,6 +394,16 @@ class MainActivity : Activity() {
                 onRequestHideKeyboard = ::hideKeyboard
             )
         )
+        clearFinishedDownloadsController = ClearFinishedDownloadsController(
+            activity = this,
+            scope = scope,
+            clearFinishedDownloadsAction = {
+                withContext(Dispatchers.IO) {
+                    app.container.repository.removeFinalizedDownloads().size
+                }
+            },
+            showToast = ::showToast
+        )
 
         settingsInfoController = SettingsInfoController(
             activity = this,
@@ -446,7 +456,9 @@ class MainActivity : Activity() {
         settingsMenuButton.setOnClickListener { showSettings() }
         headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
-        clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
+        clearFinishedButton.setOnClickListener {
+            clearFinishedDownloadsController.showClearFinishedDownloadsDialog()
+        }
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             homeDownloadRequestController.handleDownloadRequest(
                 rawUrl = rawUrl,
@@ -527,20 +539,6 @@ class MainActivity : Activity() {
         settingsController.hide()
         downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
         downloadsController.hideSearch(clearQuery = true)
-    }
-
-    private fun showClearFinishedDownloadsDialog() {
-        DarkDialogFactory.showMessageDialog(
-            this,
-            title = getString(R.string.clear_finished_downloads_title),
-            message = getString(R.string.clear_finished_downloads_message),
-            buttons = listOf(
-                DarkDialogButton(getString(android.R.string.cancel)),
-                DarkDialogButton(getString(android.R.string.ok), primary = true) {
-                clearFinishedDownloads()
-                }
-            )
-        )
     }
 
     private fun setupPlayer() {
@@ -1419,17 +1417,6 @@ class MainActivity : Activity() {
             pauseCurrentPlayback()
             stopCurrentPlayback(clearSelection = true)
             playerCategory = category
-        }
-    }
-
-    private fun clearFinishedDownloads() {
-        scope.launch {
-            val removedCount = withContext(Dispatchers.IO) {
-                app.container.repository.removeFinalizedDownloads().size
-            }
-            if (removedCount == 0) {
-                showToast(getString(R.string.clear_finished_downloads_empty))
-            }
         }
     }
 
