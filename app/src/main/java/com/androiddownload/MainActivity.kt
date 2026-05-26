@@ -46,6 +46,7 @@ import com.androiddownload.ui.home.ClipboardLinkPromptController
 import com.androiddownload.ui.home.HomeDownloadRequestController
 import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
+import com.androiddownload.ui.home.HomeRecentUrlController
 import com.androiddownload.ui.navigation.MainHeaderController
 import com.androiddownload.ui.navigation.MainNavigationController
 import com.androiddownload.ui.navigation.PrimaryScreen
@@ -101,6 +102,7 @@ class MainActivity : Activity() {
     private lateinit var homeController: HomeController
     private lateinit var clipboardLinkPromptController: ClipboardLinkPromptController
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
+    private lateinit var homeRecentUrlController: HomeRecentUrlController
     private lateinit var downloadsController: DownloadsController
     private lateinit var downloadTextProvider: DownloadTextProvider
     private lateinit var settingsController: SettingsController
@@ -205,7 +207,7 @@ class MainActivity : Activity() {
             selectedDefaultQualityProvider = ::selectedDefaultQualityOption,
             showInvalidUrl = { message -> homeController.showError(message) },
             invalidUrlMessageProvider = { getString(R.string.invalid_url) },
-            addRecentDownloadUrl = ::addRecentDownloadUrl,
+            addRecentDownloadUrl = { url -> homeRecentUrlController.addUrl(url) },
             openQualityPicker = ::openYtDlpQualityPicker,
             startDownload = ::startQueuedDownload
         )
@@ -254,6 +256,13 @@ class MainActivity : Activity() {
         recentDownloadsList = findViewById(R.id.recentDownloadsList)
         homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
         homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
+        homeRecentUrlController = HomeRecentUrlController(
+            store = recentDownloadsStore,
+            section = recentDownloadsSection,
+            list = recentDownloadsList,
+            clearButton = clearRecentButton,
+            homeController = homeController
+        )
         homeRecentDownloadsRenderer = HomeRecentDownloadsRenderer(
             context = this,
             section = homeRecentDownloadsSection,
@@ -438,10 +447,6 @@ class MainActivity : Activity() {
         headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
         clearFinishedButton.setOnClickListener { showClearFinishedDownloadsDialog() }
-        clearRecentButton.setOnClickListener {
-            recentDownloadsStore.clear()
-            renderRecentDownloads()
-        }
         homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
             homeDownloadRequestController.handleDownloadRequest(
                 rawUrl = rawUrl,
@@ -468,7 +473,7 @@ class MainActivity : Activity() {
         updateDefaultQualityText()
         downloadLocationController.updateDownloadLocationText()
         renderHomeRecentDownloads()
-        renderRecentDownloads()
+        homeRecentUrlController.render()
         showHome()
         handleIntent(intent)
         clipboardLinkPromptController.maybePrompt(intent)
@@ -511,7 +516,7 @@ class MainActivity : Activity() {
         mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
         settingsController.hide()
         renderHomeRecentDownloads()
-        renderRecentDownloads()
+        homeRecentUrlController.render()
     }
 
     private fun showDownloads() {
@@ -1391,51 +1396,6 @@ class MainActivity : Activity() {
     private fun renderHomeRecentDownloads() {
         val downloads = currentDownloads.take(MAX_HOME_RECENT_DOWNLOADS_DISPLAYED)
         homeRecentDownloadsRenderer.render(downloads)
-    }
-
-    private fun renderRecentDownloads() {
-        val recentUrls = recentDownloadsStore.load()
-        recentDownloadsSection.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
-        clearRecentButton.visibility = if (recentUrls.isEmpty()) View.GONE else View.VISIBLE
-        recentDownloadsList.removeAllViews()
-
-        recentUrls.take(RecentDownloadsStore.MAX_RECENT_DOWNLOAD_URLS_DISPLAYED).forEachIndexed { index, url ->
-            val button = Button(this).apply {
-                text = url
-                setBackgroundResource(R.drawable.bg_chip)
-                setTextColor(getColor(R.color.button_secondary_text))
-                textSize = 12f
-                isAllCaps = false
-                minHeight = 0
-                minimumHeight = 0
-                setPadding(
-                    dp(12),
-                    dp(10),
-                    dp(12),
-                    dp(10)
-                )
-                maxLines = 1
-                setSingleLine(true)
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
-                setOnClickListener {
-                    homeController.setUrl(url)
-                }
-            }
-
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            if (index > 0) {
-                params.topMargin = dp(8)
-            }
-            recentDownloadsList.addView(button, params)
-        }
-    }
-
-    private fun addRecentDownloadUrl(url: String) {
-        recentDownloadsStore.add(url)
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
