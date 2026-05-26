@@ -72,6 +72,7 @@ import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.DownloadLocationController
+import com.androiddownload.ui.settings.SettingsInfoController
 import com.androiddownload.ui.settings.SettingsController
 import com.androiddownload.ui.settings.YtDlpUpdateController
 import kotlinx.coroutines.CancellationException
@@ -105,6 +106,7 @@ class MainActivity : Activity() {
     private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
     private lateinit var downloadsController: DownloadsController
     private lateinit var settingsController: SettingsController
+    private lateinit var settingsInfoController: SettingsInfoController
     private lateinit var downloadLocationController: DownloadLocationController
     private lateinit var ytDlpUpdateController: YtDlpUpdateController
     private lateinit var mainNavigationController: MainNavigationController
@@ -385,6 +387,10 @@ class MainActivity : Activity() {
             )
         )
 
+        settingsInfoController = SettingsInfoController(
+            activity = this,
+            diagnosticsController = diagnosticsController
+        )
         settingsController = SettingsController(
             settingsContainer = findViewById(R.id.settingsContainer),
             downloadLocationCard = findViewById(R.id.downloadLocationCard),
@@ -402,8 +408,8 @@ class MainActivity : Activity() {
                 onUseDefaultDownloadLocation = { downloadLocationController.useDefaultDownloadLocation() },
                 onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
                 onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
-                onDiagnostics = ::showDiagnosticsDialog,
-                onAbout = ::showAboutDialog,
+                onDiagnostics = settingsInfoController::showDiagnosticsDialog,
+                onAbout = settingsInfoController::showAboutDialog,
                 onCloseSettings = ::closeSettingsOverlay
             )
         )
@@ -1583,32 +1589,6 @@ class MainActivity : Activity() {
             return true
         }
         return false
-    }
-
-    private fun showAboutDialog() {
-        val versionName = runCatching {
-            @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName
-        }.getOrNull().orEmpty().ifBlank { getString(R.string.not_available) }
-        val message = buildString {
-            appendLine(getString(R.string.about_app_name))
-            appendLine(getString(R.string.about_app_version, versionName))
-            appendLine()
-            appendLine(getString(R.string.about_app_description))
-            appendLine()
-            append(getString(R.string.about_app_responsible_use))
-        }
-
-        DarkDialogFactory.showMessageDialog(
-            this,
-            title = getString(R.string.about_dialog_title),
-            message = message,
-            buttons = listOf(DarkDialogButton(getString(android.R.string.ok), primary = true))
-        )
-    }
-
-    private fun showDiagnosticsDialog() {
-        diagnosticsController.show()
     }
 
     private fun updateSelectedTab(selectedTab: Button?) {
