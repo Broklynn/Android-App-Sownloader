@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -53,6 +52,7 @@ import com.androiddownload.ui.downloads.QualityDialogController
 import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
+import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.PlayerAdjacentNavigator
 import com.androiddownload.ui.player.PlayerCategory
@@ -154,11 +154,29 @@ class MainActivity : Activity() {
     private val inlineControlsHandler = Handler(Looper.getMainLooper())
     private val fullscreenControlsHandler = Handler(Looper.getMainLooper())
     private val fullscreenFeedbackHandler = Handler(Looper.getMainLooper())
-    private var audioPlayer: MediaPlayer? = null
+    private val audioPlaybackController: AudioPlaybackController by lazy {
+        AudioPlaybackController(
+            context = this,
+            onPrepared = {
+                updatePlaybackButtons()
+                updateNowPlayingInfo()
+                updatePlaybackProgress()
+                scheduleInlineFullscreenAutoHide()
+            },
+            onCompleted = ::handlePlaybackCompleted,
+            onError = {
+                handlePlaybackStartFailure(
+                    index = currentAudioStartIndex,
+                    skipBudget = currentAudioSkipBudget
+                )
+            }
+        )
+    }
     private var playerCategory = PlayerCategory.MUSIC
     private var playerItems: List<DownloadEntity> = emptyList()
     private var currentPlayerIndex = -1
-    private var audioPrepared = false
+    private var currentAudioStartIndex = -1
+    private var currentAudioSkipBudget = 0
     private var videoPrepared = false
     private var fullscreenVideoPrepared = false
     private var activeVideoMode = ActiveVideoMode.NONE
@@ -753,30 +771,9 @@ class MainActivity : Activity() {
         activeVideoMode = ActiveVideoMode.NONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
         playerVideoView.visibility = View.GONE
-        audioPrepared = false
-        audioPlayer = MediaPlayer().apply {
-            setOnPreparedListener { player ->
-                audioPrepared = true
-                player.start()
-                updatePlaybackButtons()
-                updateNowPlayingInfo()
-                updatePlaybackProgress()
-                scheduleInlineFullscreenAutoHide()
-            }
-            setOnCompletionListener { handlePlaybackCompleted() }
-            setOnErrorListener { _, _, _ ->
-                handlePlaybackStartFailure(index, skipBudget)
-                true
-            }
-            try {
-                setDataSource(this@MainActivity, uri)
-                prepareAsync()
-            } catch (exception: Exception) {
-                release()
-                audioPlayer = null
-                handlePlaybackStartFailure(index, skipBudget)
-            }
-        }
+        currentAudioStartIndex = index
+        currentAudioSkipBudget = skipBudget
+        audioPlaybackController.start(uri)
     }
 
     private fun startVideoPlayback(uri: Uri, index: Int, skipBudget: Int) {
@@ -901,9 +898,7 @@ class MainActivity : Activity() {
     }
 
     private fun pauseCurrentPlayback() {
-        if (audioPlayer?.isPlaying == true) {
-            audioPlayer?.pause()
-        }
+        audioPlaybackController.pause()
         if (activeVideoMode == ActiveVideoMode.INLINE && playerVideoView.isPlaying) {
             playerVideoView.pause()
         }
@@ -922,7 +917,7 @@ class MainActivity : Activity() {
 
     private fun resumeCurrentPlayback() {
         if (playerCategory == PlayerCategory.MUSIC) {
-            if (audioPrepared) audioPlayer?.start()
+            audioPlaybackController.resume()
         } else {
             if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
                 if (fullscreenVideoPrepared) videoFullscreenView.start()
@@ -964,9 +959,9 @@ class MainActivity : Activity() {
     }
 
     private fun stopAudioPlayback() {
-        runCatching { audioPlayer?.release() }
-        audioPlayer = null
-        audioPrepared = false
+        audioPlaybackController.stop()
+        currentAudioStartIndex = -1
+        currentAudioSkipBudget = 0
     }
 
     private fun stopVideoPlayback() {
@@ -1126,7 +1121,7 @@ class MainActivity : Activity() {
 
     private fun isCurrentPlaybackRunning(): Boolean {
         return when (activePlaybackSource()) {
-            ActivePlaybackSource.AUDIO -> audioPlayer?.isPlaying == true
+            ActivePlaybackSource.AUDIO -> audioPlaybackController.isPlaying()
             ActivePlaybackSource.FULLSCREEN_VIDEO -> videoFullscreenView.isPlaying
             ActivePlaybackSource.INLINE_VIDEO -> playerVideoView.isPlaying
             ActivePlaybackSource.NONE -> false
@@ -1135,7 +1130,7 @@ class MainActivity : Activity() {
 
     private fun isCurrentPlaybackPrepared(): Boolean {
         return when (activePlaybackSource()) {
-            ActivePlaybackSource.AUDIO -> audioPrepared && audioPlayer != null
+            ActivePlaybackSource.AUDIO -> audioPlaybackController.isPrepared()
             ActivePlaybackSource.FULLSCREEN_VIDEO -> fullscreenVideoPrepared
             ActivePlaybackSource.INLINE_VIDEO -> videoPrepared
             ActivePlaybackSource.NONE -> false
@@ -1146,7 +1141,7 @@ class MainActivity : Activity() {
         return runCatching {
             when (activePlaybackSource()) {
                 ActivePlaybackSource.AUDIO ->
-                    if (audioPrepared) audioPlayer?.duration ?: 0 else 0
+                    audioPlaybackController.duration()
                 ActivePlaybackSource.FULLSCREEN_VIDEO ->
                     if (fullscreenVideoPrepared) videoFullscreenView.duration.takeIf { it > 0 } ?: 0 else 0
                 ActivePlaybackSource.INLINE_VIDEO ->
@@ -1160,7 +1155,7 @@ class MainActivity : Activity() {
         return runCatching {
             when (activePlaybackSource()) {
                 ActivePlaybackSource.AUDIO ->
-                    if (audioPrepared) audioPlayer?.currentPosition ?: 0 else 0
+                    audioPlaybackController.currentPosition()
                 ActivePlaybackSource.FULLSCREEN_VIDEO ->
                     if (fullscreenVideoPrepared) videoFullscreenView.currentPosition else 0
                 ActivePlaybackSource.INLINE_VIDEO ->
@@ -1173,7 +1168,7 @@ class MainActivity : Activity() {
     private fun seekCurrentPlayback(positionMs: Int) {
         runCatching {
             when (activePlaybackSource()) {
-                ActivePlaybackSource.AUDIO -> if (audioPrepared) audioPlayer?.seekTo(positionMs)
+                ActivePlaybackSource.AUDIO -> audioPlaybackController.seekTo(positionMs)
                 ActivePlaybackSource.FULLSCREEN_VIDEO -> {
                     if (fullscreenVideoPrepared) videoFullscreenView.seekTo(positionMs)
                 }
