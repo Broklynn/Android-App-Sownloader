@@ -62,6 +62,19 @@ Estes componentes ja estao extraidos e devem ser preservados durante o milestone
 
 Eles devem continuar sendo usados como pecas de UI/regras puras. O milestone do player nao deve reimplementar essas responsabilidades dentro de uma engine.
 
+## Checkpoint De Micro-Refatoracoes
+
+As micro-refatoracoes seguras no player atual chegaram ao limite util.
+
+- `activePlaybackSource()` foi criado na `MainActivity` e reaproveitado onde era seguro.
+- `seekCurrentPlayback()` foi ajustado para usar `activePlaybackSource()`.
+- Nao vale conectar `PlayerPositionSnapshot` em `updatePlaybackProgress()` agora: o ganho e baixo e toca progresso/seek visivel.
+- Nao vale mexer agora em lifecycle, release ou `stopCurrentPlayback(...)`: a ordem atual de callbacks, fullscreen, release e UI deve continuar explicita.
+- `pauseCurrentPlayback()` nao deve usar `activePlaybackSource()`, porque pausa audio independentemente de `playerCategory` quando `audioPlayer` esta tocando.
+- A proxima fase nao deve ser outra micro-refatoracao; deve ser um recorte maior e explicito de runtime/controller/engine, com validacao manual completa.
+- Nao criar Media3/ExoPlayer ainda.
+- Nao criar `PlayerVideoTarget` ou `InternalPlayerEngine` sem recorte definido.
+
 ## Acoplamentos Atuais
 
 Problemas principais:
