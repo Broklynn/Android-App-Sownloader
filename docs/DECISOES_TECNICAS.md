@@ -253,3 +253,5 @@ Regra atual:
 - nao adicionar Media3/ExoPlayer diretamente;
 - nao misturar troca de engine com alteracao visual;
 - nao alterar downloaders, Room, Quick Share ou service/queue dentro do milestone do player.
+
+O plano tecnico do contrato futuro do player esta documentado em `docs/PLAYER_ARCHITECTURE_PLAN.md`.

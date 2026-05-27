@@ -43,6 +43,8 @@ Motivo: o ganho seguro restante e baixo, e o ganho maior exigiria tocar em fluxo
 
 Nao mexer no player real de forma incremental sem milestone proprio.
 
+Documento de design: `docs/PLAYER_ARCHITECTURE_PLAN.md`.
+
 Investigacao inicial recomendada:
 
 1. Mapear uso atual de `MediaPlayer` e `VideoView`.
