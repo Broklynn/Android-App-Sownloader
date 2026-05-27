@@ -13,15 +13,17 @@ A `MainActivity` ainda e dona do player real. O bloco direto de player/playback/
 Hoje o player usa:
 
 - `MediaPlayer` para audio;
-- `AspectRatioVideoView`, baseado em `VideoView`, para video inline;
-- outro `AspectRatioVideoView` separado para fullscreen;
-- troca inline/fullscreen recriando playback e preservando posicao;
+- `AspectRatioVideoView`, baseado em `VideoView`, para video inline (`playerVideoView`);
+- outro `AspectRatioVideoView`, tambem baseado em `VideoView`, para fullscreen (`videoFullscreenView`);
+- troca inline/fullscreen recriando playback no outro `VideoView` e preservando posicao;
 - `Handler` para progresso, auto-hide de controles inline, auto-hide de controles fullscreen e feedback de seek fullscreen;
 - `onPause` e `onStop` pausando playback;
 - `onDestroy` liberando player;
 - back navigation fechando fullscreen antes de settings ou saida.
 
-O fullscreen atual nao compartilha a mesma instancia visual do video inline. Ao abrir fullscreen, a Activity captura posicao e estado de play, para o inline e prepara o `videoFullscreenView`. Ao fechar fullscreen com restore, captura posicao e estado de play, para o fullscreen e prepara novamente o inline.
+O fullscreen atual nao compartilha a mesma instancia visual do video inline. Nao ha movimentacao real de surface ou target visual entre inline e fullscreen. Ao abrir fullscreen, a Activity captura posicao e estado de play, para o inline e prepara o `videoFullscreenView`. Ao fechar fullscreen com restore, captura posicao e estado de play, para o fullscreen e prepara novamente o inline.
+
+O aspect ratio do video e tratado por `AspectRatioVideoView`, que mede o conteudo com base no tamanho informado pelo `MediaPlayer`/`VideoView` preparado. Essa responsabilidade e visual e nao deve entrar no contrato puro da engine.
 
 ## Responsabilidades Atuais
 
@@ -66,8 +68,10 @@ Problemas principais:
 
 - engine e UI estao misturadas na `MainActivity`;
 - `MediaPlayer` e `VideoView` sao manipulados diretamente pela Activity;
-- fullscreen esta acoplado ao playback e ao estado da engine;
+- video inline e fullscreen dependem de duas instancias visuais separadas;
+- fullscreen esta acoplado ao playback, ao estado da engine, ao chrome visual e a orientacao;
 - back navigation conhece diretamente o fullscreen;
+- controles fullscreen estao acoplados ao mesmo fluxo de playback/progresso;
 - URI resolution usa `contentResolver` e `File` dentro da Activity;
 - timers/handlers ficam dentro da Activity;
 - `currentPlayerIndex`, `playerItems` e `playerCategory` estao misturados com engine, UI e navegacao.
@@ -140,7 +144,9 @@ Conceito para representar onde o video sera renderizado:
 - fullscreen target;
 - target ausente para audio.
 
-No curto prazo, esse conceito pode ser um adapter sobre `VideoView`/`AspectRatioVideoView`. No futuro, poderia representar uma view/surface de Media3.
+Esse conceito e necessario antes de uma engine completa com video, mas nao deve ser criado ainda. Um target puramente conceitual e insuficiente para renderizar video real, porque algum ponto do sistema precisa conversar com `View`, surface, texture ou wrapper Android equivalente.
+
+O target real provavelmente sera Android-dependent ou um adapter que esconda `View`/surface da engine. A engine pura nao deve receber `VideoView` diretamente. O target tambem nao deve misturar fullscreen, back navigation, orientacao ou controles fullscreen; esses pontos pertencem a um coordinator de UI.
 
 ### PlayerEngineState
 
@@ -199,10 +205,13 @@ Separacao desejada:
 - Player session: guarda `playerItems`, `currentPlayerIndex`, categoria e item atual.
 - Player UI/controller: atualiza lista, botoes, labels, seekbars e fullscreen controls.
 - Player engine: prepara/toca/pausa/para/seek/release e emite eventos.
+- Video visual target: adapta o destino visual do video sem expor `VideoView` diretamente para uma engine pura.
 - URI resolver: transforma `DownloadEntity.destinationUri` em URI tocavel, validando `content://` e `file://`.
-- Fullscreen coordinator: continua separado da engine no primeiro momento, porque mistura orientacao, system UI e back navigation.
+- Fullscreen coordinator: abre/fecha overlay fullscreen, preserva posicao/play state entre targets, controla orientacao, system UI, controles fullscreen e integracao com back navigation.
 
-No primeiro recorte, fullscreen deve permanecer na `MainActivity` ou em coordenador proprio, mas nao deve ser misturado com a criacao inicial da engine.
+No primeiro recorte, fullscreen deve permanecer na `MainActivity` ou em coordenador proprio, mas nao deve ser misturado com a criacao inicial da engine. A UI/MainActivity, ou um futuro coordinator, continua decidindo quando abrir e fechar o overlay fullscreen.
+
+Fullscreen, back navigation e controles fullscreen nao sao responsabilidades da engine. A engine deve ficar limitada a comandos, eventos, estado e leitura de posicao/duracao.
 
 ## Fases Seguras Do Milestone
 
@@ -227,13 +236,25 @@ Avaliar extracao de resolucao de URI para um componente pequeno.
 
 Risco: envolve `ContentResolver`, `File` e permissoes de leitura. Fazer apenas se o recorte for claro e validavel.
 
-### Fase 3: contrato Kotlin sem conectar runtime
+### Fase 3: target visual de video
 
-Criar contrato de engine apenas depois de estabilizar nomes e eventos.
+Investigar e definir o limite de `PlayerVideoTarget`/adapter antes de uma engine completa com video.
 
-Nao conectar `MainActivity`, `MediaPlayer` ou `VideoView` ainda nessa fase.
+Direcao atual:
 
-### Fase 4: adapter da engine atual
+- nao criar `PlayerVideoTarget` ainda;
+- nao expor `VideoView` diretamente para uma engine pura;
+- aceitar que o adapter real de video provavelmente sera Android-dependent;
+- manter fullscreen/back navigation fora desse conceito;
+- tratar inline/fullscreen como decisao de UI/coordinator, nao como tipo de midia.
+
+### Fase 4: contrato Kotlin sem conectar runtime
+
+Criar `InternalPlayerEngine` apenas depois de estabilizar nomes, eventos, URI resolver e fronteira de target visual.
+
+Nao conectar `MainActivity`, `MediaPlayer` ou `VideoView` ainda nessa fase. Criar o contrato sem target de video geraria uma interface boa para audio, mas incompleta para video. Criar o contrato com target de video cedo demais pode acoplar a engine a UI.
+
+### Fase 5: adapter da engine atual
 
 Adaptar o comportamento existente de `MediaPlayer`/`VideoView` atras do contrato, preservando:
 
@@ -247,11 +268,11 @@ Adaptar o comportamento existente de `MediaPlayer`/`VideoView` atras do contrato
 
 Fullscreen pode continuar temporariamente fora do contrato se isso reduzir risco.
 
-### Fase 5: validacao do comportamento atual
+### Fase 6: validacao do comportamento atual
 
 Validar que a engine atual atras do contrato nao mudou comportamento.
 
-### Fase 6: avaliar Media3/ExoPlayer
+### Fase 7: avaliar Media3/ExoPlayer
 
 Somente depois do contrato e da engine atual estabilizados:
 
@@ -266,9 +287,13 @@ Somente depois do contrato e da engine atual estabilizados:
 - Nao trocar engine direto.
 - Nao adicionar Media3/ExoPlayer antes do contrato.
 - Nao alterar UI visual junto com engine.
+- Nao alterar XML/UI junto com a primeira engine.
 - Nao mexer em `DownloadOpenRouter` no primeiro recorte.
 - Nao mover back navigation sem plano.
+- Nao mexer em back navigation junto com target visual.
 - Nao misturar fullscreen com a primeira interface se isso aumentar risco.
+- Nao mover fullscreen junto com a primeira engine.
+- Nao acoplar engine pura a `Activity`, `View`, `VideoView`, `AspectRatioVideoView` ou fullscreen overlay.
 - Nao mexer em Room, downloaders, service/queue ou Quick Share.
 
 ## Validacao Futura
@@ -299,3 +324,5 @@ Fluxos manuais minimos para runtime:
 - erro/falha e skip quando aplicavel;
 - back fecha fullscreen antes de outras acoes;
 - audio/video deve ser pausado ou parado ao fim da validacao para evitar problemas de idle/uiautomator.
+
+Quando uma etapa futura tocar target visual, fullscreen ou runtime de video, a validacao manual deve ser focada no recorte alterado e deve confirmar explicitamente que a engine nao assumiu responsabilidades de fullscreen/back navigation.
