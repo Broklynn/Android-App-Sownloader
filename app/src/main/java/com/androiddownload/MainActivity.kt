@@ -1172,12 +1172,13 @@ class MainActivity : Activity() {
 
     private fun seekCurrentPlayback(positionMs: Int) {
         runCatching {
-            if (playerCategory == PlayerCategory.MUSIC) {
-                if (audioPrepared) audioPlayer?.seekTo(positionMs)
-            } else if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-                if (fullscreenVideoPrepared) videoFullscreenView.seekTo(positionMs)
-            } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-                if (videoPrepared) playerVideoView.seekTo(positionMs)
+            when (activePlaybackSource()) {
+                ActivePlaybackSource.AUDIO -> if (audioPrepared) audioPlayer?.seekTo(positionMs)
+                ActivePlaybackSource.FULLSCREEN_VIDEO -> {
+                    if (fullscreenVideoPrepared) videoFullscreenView.seekTo(positionMs)
+                }
+                ActivePlaybackSource.INLINE_VIDEO -> if (videoPrepared) playerVideoView.seekTo(positionMs)
+                ActivePlaybackSource.NONE -> Unit
             }
         }
     }
