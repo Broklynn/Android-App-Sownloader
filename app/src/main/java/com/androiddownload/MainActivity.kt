@@ -66,6 +66,7 @@ import com.androiddownload.ui.player.PlayerNowPlayingTextFormatter
 import com.androiddownload.ui.player.PlayerPlaybackFailureAction
 import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
+import com.androiddownload.ui.player.PlaybackUriResolver
 import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.DownloadLocationController
@@ -80,7 +81,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -1355,26 +1355,7 @@ class MainActivity : Activity() {
     }
 
     private fun resolvePlaybackUri(download: DownloadEntity): Uri? {
-        val destination = download.destinationUri?.takeIf { it.isNotBlank() } ?: return null
-        val destinationUri = Uri.parse(destination)
-        return when (destinationUri.scheme) {
-            "content" -> if (canOpenContentUri(destinationUri)) destinationUri else null
-            "file" -> {
-                val file = File(destinationUri.path ?: return null)
-                if (file.exists()) Uri.fromFile(file) else null
-            }
-            null -> {
-                val file = File(destination)
-                if (file.exists()) Uri.fromFile(file) else null
-            }
-            else -> null
-        }
-    }
-
-    private fun canOpenContentUri(uri: Uri): Boolean {
-        return runCatching {
-            contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } == true
-        }.getOrDefault(false)
+        return PlaybackUriResolver(contentResolver).resolve(download.destinationUri)
     }
 
     private fun handleHeaderSearchClick() {
