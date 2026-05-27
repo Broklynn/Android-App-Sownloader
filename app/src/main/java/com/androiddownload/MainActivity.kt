@@ -83,6 +83,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : Activity() {
+    private enum class ActivePlaybackSource {
+        AUDIO,
+        INLINE_VIDEO,
+        FULLSCREEN_VIDEO,
+        NONE
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var appHeader: View
@@ -1108,54 +1115,57 @@ class MainActivity : Activity() {
         return playerItems.getOrNull(currentPlayerIndex)
     }
 
+    private fun activePlaybackSource(): ActivePlaybackSource {
+        return when {
+            playerCategory == PlayerCategory.MUSIC -> ActivePlaybackSource.AUDIO
+            activeVideoMode == ActiveVideoMode.FULLSCREEN -> ActivePlaybackSource.FULLSCREEN_VIDEO
+            activeVideoMode == ActiveVideoMode.INLINE -> ActivePlaybackSource.INLINE_VIDEO
+            else -> ActivePlaybackSource.NONE
+        }
+    }
+
     private fun isCurrentPlaybackRunning(): Boolean {
-        return if (playerCategory == PlayerCategory.MUSIC) {
-            audioPlayer?.isPlaying == true
-        } else if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-            videoFullscreenView.isPlaying
-        } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-            playerVideoView.isPlaying
-        } else {
-            false
+        return when (activePlaybackSource()) {
+            ActivePlaybackSource.AUDIO -> audioPlayer?.isPlaying == true
+            ActivePlaybackSource.FULLSCREEN_VIDEO -> videoFullscreenView.isPlaying
+            ActivePlaybackSource.INLINE_VIDEO -> playerVideoView.isPlaying
+            ActivePlaybackSource.NONE -> false
         }
     }
 
     private fun isCurrentPlaybackPrepared(): Boolean {
-        return if (playerCategory == PlayerCategory.MUSIC) {
-            audioPrepared && audioPlayer != null
-        } else if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-            fullscreenVideoPrepared
-        } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-            videoPrepared
-        } else {
-            false
+        return when (activePlaybackSource()) {
+            ActivePlaybackSource.AUDIO -> audioPrepared && audioPlayer != null
+            ActivePlaybackSource.FULLSCREEN_VIDEO -> fullscreenVideoPrepared
+            ActivePlaybackSource.INLINE_VIDEO -> videoPrepared
+            ActivePlaybackSource.NONE -> false
         }
     }
 
     private fun currentDuration(): Int {
         return runCatching {
-            if (playerCategory == PlayerCategory.MUSIC) {
-                if (audioPrepared) audioPlayer?.duration ?: 0 else 0
-            } else if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-                if (fullscreenVideoPrepared) videoFullscreenView.duration.takeIf { it > 0 } ?: 0 else 0
-            } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-                if (videoPrepared) playerVideoView.duration.takeIf { it > 0 } ?: 0 else 0
-            } else {
-                0
+            when (activePlaybackSource()) {
+                ActivePlaybackSource.AUDIO ->
+                    if (audioPrepared) audioPlayer?.duration ?: 0 else 0
+                ActivePlaybackSource.FULLSCREEN_VIDEO ->
+                    if (fullscreenVideoPrepared) videoFullscreenView.duration.takeIf { it > 0 } ?: 0 else 0
+                ActivePlaybackSource.INLINE_VIDEO ->
+                    if (videoPrepared) playerVideoView.duration.takeIf { it > 0 } ?: 0 else 0
+                ActivePlaybackSource.NONE -> 0
             }
         }.getOrDefault(0)
     }
 
     private fun currentPosition(): Int {
         return runCatching {
-            if (playerCategory == PlayerCategory.MUSIC) {
-                if (audioPrepared) audioPlayer?.currentPosition ?: 0 else 0
-            } else if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-                if (fullscreenVideoPrepared) videoFullscreenView.currentPosition else 0
-            } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-                if (videoPrepared) playerVideoView.currentPosition else 0
-            } else {
-                0
+            when (activePlaybackSource()) {
+                ActivePlaybackSource.AUDIO ->
+                    if (audioPrepared) audioPlayer?.currentPosition ?: 0 else 0
+                ActivePlaybackSource.FULLSCREEN_VIDEO ->
+                    if (fullscreenVideoPrepared) videoFullscreenView.currentPosition else 0
+                ActivePlaybackSource.INLINE_VIDEO ->
+                    if (videoPrepared) playerVideoView.currentPosition else 0
+                ActivePlaybackSource.NONE -> 0
             }
         }.getOrDefault(0)
     }
