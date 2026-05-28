@@ -55,6 +55,7 @@ import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.FullscreenChromeController
 import com.androiddownload.ui.player.FullscreenControlsController
+import com.androiddownload.ui.player.FullscreenOverlayController
 import com.androiddownload.ui.player.FullscreenSeekController
 import com.androiddownload.ui.player.FullscreenVideoPlaybackController
 import com.androiddownload.ui.player.InlineVideoPlaybackController
@@ -148,7 +149,6 @@ class MainActivity : Activity() {
     private lateinit var videoFullscreenOverlay: View
     private lateinit var videoFullscreenControls: View
     private lateinit var videoFullscreenCloseButton: ImageButton
-    private lateinit var videoFullscreenTitleText: TextView
     private lateinit var videoFullscreenView: AspectRatioVideoView
     private lateinit var videoFullscreenSeekBar: SeekBar
     private lateinit var videoFullscreenCurrentTimeText: TextView
@@ -157,6 +157,7 @@ class MainActivity : Activity() {
     private lateinit var videoFullscreenSeekFeedbackText: TextView
     private val playbackHandler = Handler(Looper.getMainLooper())
     private val inlineControlsHandler = Handler(Looper.getMainLooper())
+    private lateinit var fullscreenOverlayController: FullscreenOverlayController
     private val audioPlaybackController: AudioPlaybackController by lazy {
         AudioPlaybackController(
             context = this,
@@ -390,7 +391,10 @@ class MainActivity : Activity() {
         videoFullscreenOverlay = findViewById(R.id.videoFullscreenOverlay)
         videoFullscreenControls = findViewById(R.id.videoFullscreenControls)
         videoFullscreenCloseButton = findViewById(R.id.videoFullscreenCloseButton)
-        videoFullscreenTitleText = findViewById(R.id.videoFullscreenTitleText)
+        fullscreenOverlayController = FullscreenOverlayController(
+            overlay = videoFullscreenOverlay,
+            titleText = findViewById(R.id.videoFullscreenTitleText)
+        )
         videoFullscreenView = findViewById(R.id.videoFullscreenView)
         videoFullscreenSeekBar = findViewById(R.id.videoFullscreenSeekBar)
         videoFullscreenCurrentTimeText = findViewById(R.id.videoFullscreenCurrentTimeText)
@@ -1198,14 +1202,13 @@ class MainActivity : Activity() {
         stopVideoPlayback()
         playerVideoView.visibility = View.GONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
-        videoFullscreenTitleText.text = download.fileName
         playerControlsController.updateFullscreenProgress(
             progress = 0,
             currentTime = PlayerProgressCalculator.formatPlaybackTime(position),
             duration = playerDurationText.text
         )
         fullscreenChromeController.enterFullscreen()
-        videoFullscreenOverlay.visibility = View.VISIBLE
+        fullscreenOverlayController.show(download.fileName)
         fullscreenControlsController.showControls()
         activeVideoMode = ActiveVideoMode.FULLSCREEN
         fullscreenVideoPlaybackController.start(
@@ -1216,13 +1219,13 @@ class MainActivity : Activity() {
     }
 
     private fun closeVideoFullscreen(restoreInline: Boolean) {
-        if (!::videoFullscreenOverlay.isInitialized || !isVideoFullscreenOpen()) return
+        if (!isVideoFullscreenOpen()) return
         val download = currentPlayingDownload()
         val position = currentPosition()
         val wasPlaying = isCurrentPlaybackRunning()
         playbackHandler.removeCallbacksAndMessages(null)
         stopFullscreenVideoPlayback()
-        videoFullscreenOverlay.visibility = View.GONE
+        fullscreenOverlayController.hide()
         fullscreenControlsController.clearCallbacks()
         fullscreenChromeController.exitFullscreen()
         playerControlsController.resetFullscreenProgress(getString(R.string.player_time_zero))
@@ -1252,7 +1255,7 @@ class MainActivity : Activity() {
     }
 
     private fun isVideoFullscreenOpen(): Boolean {
-        return ::videoFullscreenOverlay.isInitialized && videoFullscreenOverlay.visibility == View.VISIBLE
+        return ::fullscreenOverlayController.isInitialized && fullscreenOverlayController.isOpen()
     }
 
     private fun seekFullscreenBy(deltaMs: Int) {
