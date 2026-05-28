@@ -6,17 +6,19 @@ Este documento registra o design tecnico do milestone de player do DarkWave.
 
 Ele nao implementa engine, nao adiciona Media3/ExoPlayer e nao muda runtime. A funcao deste plano e definir limites entre UI do player, sessao de playback e engine antes de qualquer extracao ou troca de tecnologia.
 
-## Estado Atual
+## Estado Atual Pos-Controllers
 
-A `MainActivity` ainda e dona do player real. O bloco direto de player/playback/fullscreen ocupa cerca de 835 linhas, ou cerca de 900-950 linhas quando incluidos campos, wiring, lifecycle e back navigation.
+A `MainActivity` continua sendo a coordinator/orquestradora do player real, mas o runtime direto de playback e parte dos controles fullscreen ja foram extraidos para controllers pequenos.
 
 Hoje o player usa:
 
-- `MediaPlayer` para audio;
-- `AspectRatioVideoView`, baseado em `VideoView`, para video inline (`playerVideoView`);
-- outro `AspectRatioVideoView`, tambem baseado em `VideoView`, para fullscreen (`videoFullscreenView`);
+- `AudioPlaybackController` para controlar o runtime de audio com `MediaPlayer`;
+- `InlineVideoPlaybackController` para controlar o runtime do video inline em `playerVideoView`;
+- `FullscreenVideoPlaybackController` para controlar o runtime do video fullscreen em `videoFullscreenView`;
+- `FullscreenControlsController` para controlar a UI dos controles fullscreen: mostrar/ocultar, auto-hide, feedback de seek e callbacks de play/pause e fechar;
+- `AspectRatioVideoView`, baseado em `VideoView`, para video inline e fullscreen;
 - troca inline/fullscreen recriando playback no outro `VideoView` e preservando posicao;
-- `Handler` para progresso, auto-hide de controles inline, auto-hide de controles fullscreen e feedback de seek fullscreen;
+- `Handler` para progresso geral e auto-hide de controles inline;
 - `onPause` e `onStop` pausando playback;
 - `onDestroy` liberando player;
 - back navigation fechando fullscreen antes de settings ou saida.
@@ -25,30 +27,40 @@ O fullscreen atual nao compartilha a mesma instancia visual do video inline. Nao
 
 O aspect ratio do video e tratado por `AspectRatioVideoView`, que mede o conteudo com base no tamanho informado pelo `MediaPlayer`/`VideoView` preparado. Essa responsabilidade e visual e nao deve entrar no contrato puro da engine.
 
+Validacoes recentes confirmaram:
+
+- MP3 iniciou, pausou/retomou e seek funcionou;
+- MP4 inline iniciou, pausou/retomou e seek funcionou;
+- fullscreen abriu, reproduziu, pausou/retomou, double tap seek funcionou, seekbar funcionou, fechou restaurando inline e Back fechou fullscreen;
+- controles fullscreen, auto-hide e feedback de seek foram validados.
+
 ## Responsabilidades Atuais
 
 Responsabilidades que ainda vivem na `MainActivity`:
 
 - lista e categoria do player: `playerItems`, `playerCategory`, `currentPlayerIndex`;
 - selecao atual e sincronizacao com downloads filtrados;
-- start de playback por indice;
-- preparacao e execucao de audio com `MediaPlayer`;
-- preparacao e execucao de video inline com `playerVideoView`;
-- preparacao e execucao de video fullscreen com `videoFullscreenView`;
-- play, pause, resume, stop e release;
+- decisao audio/video e start de playback por indice;
+- start, stop, pause e resume como orquestracao entre os controllers;
 - seek inline e fullscreen;
 - timer de progresso;
 - completion, play next e stop at end;
 - erro, falha de start e skip para proximo item;
 - resolucao de URI `content://` e `file://`;
 - labels de now playing, status e botoes;
-- fullscreen chrome, orientacao, system UI e controles;
+- open/close fullscreen;
+- restore inline ao fechar fullscreen;
+- fullscreen chrome, orientacao e system UI;
 - back navigation quando fullscreen esta aberto.
 
 ## Helpers Ja Separados
 
 Estes componentes ja estao extraidos e devem ser preservados durante o milestone:
 
+- `AudioPlaybackController`;
+- `InlineVideoPlaybackController`;
+- `FullscreenVideoPlaybackController`;
+- `FullscreenControlsController`;
 - `PlayerListController`;
 - `PlayerListRenderer`;
 - `PlayerProgressCalculator`;
@@ -61,6 +73,23 @@ Estes componentes ja estao extraidos e devem ser preservados durante o milestone
 - `PlayerPlaybackFailureResolver`.
 
 Eles devem continuar sendo usados como pecas de UI/regras puras. O milestone do player nao deve reimplementar essas responsabilidades dentro de uma engine.
+
+Os quatro controllers reais ja extraidos nao devem conhecer sessao/lista/categoria, `DownloadEntity`, back navigation, orientacao, system UI ou decisoes de skip/next/stop. Eventos continuam voltando para a `MainActivity` por callbacks.
+
+## Decisoes Arquiteturais Atuais
+
+- Nao criar `InternalPlayerEngine` ainda. A fronteira entre controllers atuais, session, target visual e engine ainda nao esta clara o bastante.
+- Nao adicionar Media3/ExoPlayer ainda. A engine atual deve continuar preservada ate existir contrato claro e validado.
+- Nao criar camada comum entre `AudioPlaybackController`, `InlineVideoPlaybackController` e `FullscreenVideoPlaybackController` sem ganho claro. A duplicacao atual e pequena e mais segura que uma abstracao prematura.
+- Nao mover o fullscreen coordinator completo ainda. Back navigation, orientacao, system UI, overlay lifecycle e restore inline continuam sensiveis e devem ser tratados em recorte proprio.
+- O proximo recorte deve ser escolhido com cuidado, porque o runtime principal de playback e os controles fullscreen ja sairam da `MainActivity`.
+
+## Proximas Opcoes Possiveis
+
+- Investigar um fullscreen coordinator completo, somente se o escopo conseguir separar claramente overlay, restore inline, back navigation e chrome.
+- Investigar camada comum entre controllers, apenas se aparecer duplicacao real e repetida que reduza risco ao ser extraida.
+- Investigar reducao adicional da `MainActivity` como coordinator, priorizando limites de session/lista/categoria ou now playing/progresso.
+- Pausar refatoracoes de player e estabilizar, caso o proximo recorte misture responsabilidades demais.
 
 ## Checkpoint De Micro-Refatoracoes
 
@@ -80,13 +109,12 @@ As micro-refatoracoes seguras no player atual chegaram ao limite util.
 Problemas principais:
 
 - engine e UI estao misturadas na `MainActivity`;
-- `MediaPlayer` e `VideoView` sao manipulados diretamente pela Activity;
 - video inline e fullscreen dependem de duas instancias visuais separadas;
-- fullscreen esta acoplado ao playback, ao estado da engine, ao chrome visual e a orientacao;
+- fullscreen ainda esta acoplado ao estado da session, ao chrome visual, a orientacao e ao restore inline;
 - back navigation conhece diretamente o fullscreen;
-- controles fullscreen estao acoplados ao mesmo fluxo de playback/progresso;
+- progresso geral e now playing continuam coordenados pela Activity;
 - URI resolution usa `contentResolver` e `File` dentro da Activity;
-- timers/handlers ficam dentro da Activity;
+- timer de progresso geral fica dentro da Activity;
 - `currentPlayerIndex`, `playerItems` e `playerCategory` estao misturados com engine, UI e navegacao.
 
 Consequencia: uma troca direta para Media3/ExoPlayer tende a tocar UI, fullscreen, lifecycle, erro/completion e navegacao ao mesmo tempo.
@@ -299,15 +327,20 @@ Somente depois do contrato e da engine atual estabilizados:
 
 - Nao trocar engine direto.
 - Nao adicionar Media3/ExoPlayer antes do contrato.
+- Nao adicionar Media3 antes de contrato claro.
 - Nao alterar UI visual junto com engine.
 - Nao alterar XML/UI junto com a primeira engine.
+- Nao alterar XML/Gradle junto com controller.
 - Nao mexer em `DownloadOpenRouter` no primeiro recorte.
 - Nao mover back navigation sem plano.
 - Nao mexer em back navigation junto com target visual.
+- Nao misturar back navigation, orientacao ou system UI com playback controller.
 - Nao misturar fullscreen com a primeira interface se isso aumentar risco.
 - Nao mover fullscreen junto com a primeira engine.
 - Nao acoplar engine pura a `Activity`, `View`, `VideoView`, `AspectRatioVideoView` ou fullscreen overlay.
 - Nao mexer em Room, downloaders, service/queue ou Quick Share.
+- Validacao manual de MP4 deve ser feita pelo usuario quando necessario.
+- Codex nao deve insistir em automacao ADB extensa para MP4.
 
 ## Validacao Futura
 
