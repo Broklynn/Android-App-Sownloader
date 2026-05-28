@@ -55,6 +55,7 @@ import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.FullscreenChromeController
 import com.androiddownload.ui.player.FullscreenControlsController
+import com.androiddownload.ui.player.FullscreenSeekController
 import com.androiddownload.ui.player.FullscreenVideoPlaybackController
 import com.androiddownload.ui.player.InlineVideoPlaybackController
 import com.androiddownload.ui.player.PlayerAdjacentNavigator
@@ -224,6 +225,7 @@ class MainActivity : Activity() {
             isSettingsVisible = { settingsController.isVisible() }
         )
     }
+    private val fullscreenSeekController = FullscreenSeekController()
     private var playerCategory = PlayerCategory.MUSIC
     private var playerItems: List<DownloadEntity> = emptyList()
     private var currentPlayerIndex = -1
@@ -638,7 +640,10 @@ class MainActivity : Activity() {
             override fun onDoubleTap(event: MotionEvent): Boolean {
                 val width = videoFullscreenOverlay.width.takeIf { it > 0 } ?: return true
                 seekFullscreenBy(
-                    deltaMs = if (event.x < width / 2f) -10_000 else 10_000
+                    deltaMs = fullscreenSeekController.deltaForTap(
+                        tapX = event.x,
+                        width = width
+                    )
                 )
                 fullscreenControlsController.showControls()
                 fullscreenControlsController.scheduleAutoHide()
@@ -1254,10 +1259,10 @@ class MainActivity : Activity() {
         if (!isVideoFullscreenOpen() || !fullscreenVideoPlaybackController.isPrepared()) return
         val duration = currentDuration()
         if (duration <= 0) return
-        val target = PlayerProgressCalculator.seekBy(
+        val target = fullscreenSeekController.targetPosition(
             currentPositionMs = currentPosition(),
-            deltaMs = deltaMs,
-            durationMs = duration
+            durationMs = duration,
+            deltaMs = deltaMs
         )
         seekCurrentPlayback(target)
         updatePlaybackProgress()
