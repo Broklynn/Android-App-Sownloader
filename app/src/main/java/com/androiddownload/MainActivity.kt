@@ -12,8 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.GestureDetector
-import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedCallback
@@ -55,6 +53,7 @@ import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.FullscreenChromeController
 import com.androiddownload.ui.player.FullscreenControlsController
+import com.androiddownload.ui.player.FullscreenGestureController
 import com.androiddownload.ui.player.FullscreenOverlayController
 import com.androiddownload.ui.player.FullscreenSeekController
 import com.androiddownload.ui.player.FullscreenVideoPlaybackController
@@ -158,6 +157,7 @@ class MainActivity : Activity() {
     private val playbackHandler = Handler(Looper.getMainLooper())
     private val inlineControlsHandler = Handler(Looper.getMainLooper())
     private lateinit var fullscreenOverlayController: FullscreenOverlayController
+    private lateinit var fullscreenGestureController: FullscreenGestureController
     private val audioPlaybackController: AudioPlaybackController by lazy {
         AudioPlaybackController(
             context = this,
@@ -236,7 +236,6 @@ class MainActivity : Activity() {
     private var userSeeking = false
     private var fullscreenUserSeeking = false
     private var inlineFullscreenVisible = false
-    private lateinit var fullscreenGestureDetector: GestureDetector
     private var hasActiveDownloads = false
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var currentScreen = PrimaryScreen.HOME
@@ -635,29 +634,24 @@ class MainActivity : Activity() {
         playerNextButton.setOnClickListener { playAdjacent(offset = 1) }
         playerFullscreenButton.setOnClickListener { openCurrentVideoFullscreen() }
         playerVideoFrame.setOnClickListener { toggleInlineFullscreenButton() }
-        fullscreenGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
+        fullscreenGestureController = FullscreenGestureController(
+            context = this,
+            touchTarget = videoFullscreenOverlay,
+            onSingleTap = {
                 fullscreenControlsController.toggleControls()
-                return true
-            }
-
-            override fun onDoubleTap(event: MotionEvent): Boolean {
-                val width = videoFullscreenOverlay.width.takeIf { it > 0 } ?: return true
+            },
+            onDoubleTap = { tapX, width ->
                 seekFullscreenBy(
                     deltaMs = fullscreenSeekController.deltaForTap(
-                        tapX = event.x,
+                        tapX = tapX,
                         width = width
                     )
                 )
                 fullscreenControlsController.showControls()
                 fullscreenControlsController.scheduleAutoHide()
-                return true
             }
-        })
-        videoFullscreenOverlay.setOnTouchListener { _, event ->
-            fullscreenGestureDetector.onTouchEvent(event)
-            true
-        }
+        )
+        fullscreenGestureController.attach()
         playerSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
