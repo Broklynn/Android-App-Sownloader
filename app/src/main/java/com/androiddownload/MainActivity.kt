@@ -6,7 +6,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -54,6 +53,7 @@ import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
+import com.androiddownload.ui.player.FullscreenChromeController
 import com.androiddownload.ui.player.FullscreenControlsController
 import com.androiddownload.ui.player.FullscreenVideoPlaybackController
 import com.androiddownload.ui.player.InlineVideoPlaybackController
@@ -216,6 +216,14 @@ class MainActivity : Activity() {
             }
         )
     }
+    private val fullscreenChromeController: FullscreenChromeController by lazy {
+        FullscreenChromeController(
+            activity = this,
+            appHeader = appHeader,
+            mainTabBar = mainTabBar,
+            isSettingsVisible = { settingsController.isVisible() }
+        )
+    }
     private var playerCategory = PlayerCategory.MUSIC
     private var playerItems: List<DownloadEntity> = emptyList()
     private var currentPlayerIndex = -1
@@ -226,9 +234,6 @@ class MainActivity : Activity() {
     private var fullscreenUserSeeking = false
     private var inlineFullscreenVisible = false
     private lateinit var fullscreenGestureDetector: GestureDetector
-    private var previousRequestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    private var previousSystemUiVisibility = 0
-    private var fullscreenChromeApplied = false
     private var hasActiveDownloads = false
     private var currentDownloads: List<DownloadEntity> = emptyList()
     private var currentScreen = PrimaryScreen.HOME
@@ -1194,7 +1199,7 @@ class MainActivity : Activity() {
             currentTime = PlayerProgressCalculator.formatPlaybackTime(position),
             duration = playerDurationText.text
         )
-        enterVideoFullscreenChrome()
+        fullscreenChromeController.enterFullscreen()
         videoFullscreenOverlay.visibility = View.VISIBLE
         fullscreenControlsController.showControls()
         activeVideoMode = ActiveVideoMode.FULLSCREEN
@@ -1214,7 +1219,7 @@ class MainActivity : Activity() {
         stopFullscreenVideoPlayback()
         videoFullscreenOverlay.visibility = View.GONE
         fullscreenControlsController.clearCallbacks()
-        exitVideoFullscreenChrome()
+        fullscreenChromeController.exitFullscreen()
         playerControlsController.resetFullscreenProgress(getString(R.string.player_time_zero))
 
         if (restoreInline && playerCategory == PlayerCategory.VIDEO && download != null) {
@@ -1259,35 +1264,6 @@ class MainActivity : Activity() {
         fullscreenControlsController.showSeekFeedback(
             if (deltaMs < 0) getString(R.string.player_rewind_10) else getString(R.string.player_forward_10)
         )
-    }
-
-    private fun enterVideoFullscreenChrome() {
-        if (fullscreenChromeApplied) return
-        fullscreenChromeApplied = true
-        previousRequestedOrientation = requestedOrientation
-        previousSystemUiVisibility = window.decorView.systemUiVisibility
-        appHeader.visibility = View.GONE
-        mainTabBar.visibility = View.GONE
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
-    }
-
-    private fun exitVideoFullscreenChrome() {
-        if (!fullscreenChromeApplied) return
-        fullscreenChromeApplied = false
-        requestedOrientation = previousRequestedOrientation
-        window.decorView.systemUiVisibility = previousSystemUiVisibility
-        if (!settingsController.isVisible()) {
-            appHeader.visibility = View.VISIBLE
-            mainTabBar.visibility = View.VISIBLE
-        }
     }
 
     private fun resolvePlaybackUri(download: DownloadEntity): Uri? {
