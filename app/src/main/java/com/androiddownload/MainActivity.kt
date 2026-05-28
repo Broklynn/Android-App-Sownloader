@@ -54,6 +54,7 @@ import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AudioPlaybackController
 import com.androiddownload.ui.player.AspectRatioVideoView
+import com.androiddownload.ui.player.FullscreenControlsController
 import com.androiddownload.ui.player.FullscreenVideoPlaybackController
 import com.androiddownload.ui.player.InlineVideoPlaybackController
 import com.androiddownload.ui.player.PlayerAdjacentNavigator
@@ -141,6 +142,7 @@ class MainActivity : Activity() {
     private lateinit var playerNextButton: Button
     private lateinit var playerFullscreenButton: ImageButton
     private lateinit var playerControlsController: PlayerControlsController
+    private lateinit var fullscreenControlsController: FullscreenControlsController
     private lateinit var playerListRenderer: PlayerListRenderer
     private lateinit var videoFullscreenOverlay: View
     private lateinit var videoFullscreenControls: View
@@ -154,8 +156,6 @@ class MainActivity : Activity() {
     private lateinit var videoFullscreenSeekFeedbackText: TextView
     private val playbackHandler = Handler(Looper.getMainLooper())
     private val inlineControlsHandler = Handler(Looper.getMainLooper())
-    private val fullscreenControlsHandler = Handler(Looper.getMainLooper())
-    private val fullscreenFeedbackHandler = Handler(Looper.getMainLooper())
     private val audioPlaybackController: AudioPlaybackController by lazy {
         AudioPlaybackController(
             context = this,
@@ -197,7 +197,7 @@ class MainActivity : Activity() {
                     updatePlaybackButtons()
                     updateNowPlayingInfo()
                     updatePlaybackProgress()
-                    scheduleFullscreenControlsAutoHide()
+                    fullscreenControlsController.scheduleAutoHide()
                 }
             },
             onCompleted = {
@@ -225,7 +225,6 @@ class MainActivity : Activity() {
     private var userSeeking = false
     private var fullscreenUserSeeking = false
     private var inlineFullscreenVisible = false
-    private var fullscreenControlsVisible = true
     private lateinit var fullscreenGestureDetector: GestureDetector
     private var previousRequestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var previousSystemUiVisibility = 0
@@ -410,6 +409,15 @@ class MainActivity : Activity() {
             videoFullscreenPlayPauseButton = videoFullscreenPlayPauseButton
         )
         videoFullscreenSeekFeedbackText = findViewById(R.id.videoFullscreenSeekFeedbackText)
+        fullscreenControlsController = FullscreenControlsController(
+            controls = videoFullscreenControls,
+            closeButton = videoFullscreenCloseButton,
+            playPauseButton = videoFullscreenPlayPauseButton,
+            seekFeedbackText = videoFullscreenSeekFeedbackText,
+            shouldAutoHide = { isVideoFullscreenOpen() && isCurrentPlaybackRunning() },
+            onPlayPauseClick = ::togglePlayback,
+            onCloseClick = { closeVideoFullscreen(restoreInline = true) }
+        )
         setupPlayer()
         setupSystemBackHandler()
 
@@ -616,11 +624,9 @@ class MainActivity : Activity() {
         playerNextButton.setOnClickListener { playAdjacent(offset = 1) }
         playerFullscreenButton.setOnClickListener { openCurrentVideoFullscreen() }
         playerVideoFrame.setOnClickListener { toggleInlineFullscreenButton() }
-        videoFullscreenCloseButton.setOnClickListener { closeVideoFullscreen(restoreInline = true) }
-        videoFullscreenPlayPauseButton.setOnClickListener { togglePlayback() }
         fullscreenGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-                toggleFullscreenControls()
+                fullscreenControlsController.toggleControls()
                 return true
             }
 
@@ -629,8 +635,8 @@ class MainActivity : Activity() {
                 seekFullscreenBy(
                     deltaMs = if (event.x < width / 2f) -10_000 else 10_000
                 )
-                showFullscreenControls()
-                scheduleFullscreenControlsAutoHide()
+                fullscreenControlsController.showControls()
+                fullscreenControlsController.scheduleAutoHide()
                 return true
             }
         })
@@ -900,8 +906,8 @@ class MainActivity : Activity() {
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
         if (isVideoFullscreenOpen()) {
-            showFullscreenControls()
-            fullscreenControlsHandler.removeCallbacksAndMessages(null)
+            fullscreenControlsController.showControls()
+            fullscreenControlsController.clearCallbacks()
         }
         updatePlaybackButtons()
         updateNowPlayingInfo()
@@ -920,14 +926,14 @@ class MainActivity : Activity() {
         updatePlaybackButtons()
         updateNowPlayingInfo()
         updatePlaybackProgress()
-        scheduleFullscreenControlsAutoHide()
+        fullscreenControlsController.scheduleAutoHide()
         scheduleInlineFullscreenAutoHide()
     }
 
     private fun stopCurrentPlayback(clearSelection: Boolean) {
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
-        clearFullscreenControlCallbacks()
+        fullscreenControlsController.clearCallbacks()
         userSeeking = false
         fullscreenUserSeeking = false
         closeVideoFullscreen(restoreInline = false)
@@ -974,7 +980,7 @@ class MainActivity : Activity() {
 
     private fun releasePlayer() {
         inlineControlsHandler.removeCallbacksAndMessages(null)
-        clearFullscreenControlCallbacks()
+        fullscreenControlsController.clearCallbacks()
         stopCurrentPlayback(clearSelection = true)
     }
 
@@ -1190,7 +1196,7 @@ class MainActivity : Activity() {
         )
         enterVideoFullscreenChrome()
         videoFullscreenOverlay.visibility = View.VISIBLE
-        showFullscreenControls()
+        fullscreenControlsController.showControls()
         activeVideoMode = ActiveVideoMode.FULLSCREEN
         fullscreenVideoPlaybackController.start(
             uri = playbackUri,
@@ -1207,7 +1213,7 @@ class MainActivity : Activity() {
         playbackHandler.removeCallbacksAndMessages(null)
         stopFullscreenVideoPlayback()
         videoFullscreenOverlay.visibility = View.GONE
-        clearFullscreenControlCallbacks()
+        fullscreenControlsController.clearCallbacks()
         exitVideoFullscreenChrome()
         playerControlsController.resetFullscreenProgress(getString(R.string.player_time_zero))
 
@@ -1239,40 +1245,6 @@ class MainActivity : Activity() {
         return ::videoFullscreenOverlay.isInitialized && videoFullscreenOverlay.visibility == View.VISIBLE
     }
 
-    private fun showFullscreenControls() {
-        fullscreenControlsVisible = true
-        videoFullscreenControls.visibility = View.VISIBLE
-    }
-
-    private fun hideFullscreenControls() {
-        if (!isCurrentPlaybackRunning()) return
-        fullscreenControlsVisible = false
-        videoFullscreenControls.visibility = View.GONE
-    }
-
-    private fun toggleFullscreenControls() {
-        if (fullscreenControlsVisible) {
-            hideFullscreenControls()
-        } else {
-            showFullscreenControls()
-            scheduleFullscreenControlsAutoHide()
-        }
-    }
-
-    private fun scheduleFullscreenControlsAutoHide() {
-        fullscreenControlsHandler.removeCallbacksAndMessages(null)
-        if (!isVideoFullscreenOpen() || !isCurrentPlaybackRunning()) return
-        fullscreenControlsHandler.postDelayed({ hideFullscreenControls() }, 3_000L)
-    }
-
-    private fun clearFullscreenControlCallbacks() {
-        fullscreenControlsHandler.removeCallbacksAndMessages(null)
-        fullscreenFeedbackHandler.removeCallbacksAndMessages(null)
-        if (::videoFullscreenSeekFeedbackText.isInitialized) {
-            videoFullscreenSeekFeedbackText.visibility = View.GONE
-        }
-    }
-
     private fun seekFullscreenBy(deltaMs: Int) {
         if (!isVideoFullscreenOpen() || !fullscreenVideoPlaybackController.isPrepared()) return
         val duration = currentDuration()
@@ -1284,18 +1256,9 @@ class MainActivity : Activity() {
         )
         seekCurrentPlayback(target)
         updatePlaybackProgress()
-        showFullscreenSeekFeedback(
+        fullscreenControlsController.showSeekFeedback(
             if (deltaMs < 0) getString(R.string.player_rewind_10) else getString(R.string.player_forward_10)
         )
-    }
-
-    private fun showFullscreenSeekFeedback(text: String) {
-        videoFullscreenSeekFeedbackText.text = text
-        videoFullscreenSeekFeedbackText.visibility = View.VISIBLE
-        fullscreenFeedbackHandler.removeCallbacksAndMessages(null)
-        fullscreenFeedbackHandler.postDelayed({
-            videoFullscreenSeekFeedbackText.visibility = View.GONE
-        }, 700L)
     }
 
     private fun enterVideoFullscreenChrome() {
