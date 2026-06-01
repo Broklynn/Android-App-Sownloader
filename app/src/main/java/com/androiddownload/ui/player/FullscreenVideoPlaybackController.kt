@@ -9,11 +9,16 @@ class FullscreenVideoPlaybackController(
     private val onError: () -> Unit
 ) {
     private var prepared = false
+    private var playbackGeneration = 0
 
     fun start(uri: Uri, positionMs: Int = 0, playWhenReady: Boolean = true) {
+        val generation = ++playbackGeneration
         prepared = false
         try {
             videoView.setOnPreparedListener {
+                if (!isCurrentGeneration(generation)) {
+                    return@setOnPreparedListener
+                }
                 prepared = true
                 videoView.setVideoSize(it.videoWidth, it.videoHeight)
                 if (positionMs > 0) {
@@ -25,20 +30,28 @@ class FullscreenVideoPlaybackController(
                 onPrepared()
             }
             videoView.setOnCompletionListener {
+                if (!isCurrentGeneration(generation)) {
+                    return@setOnCompletionListener
+                }
                 prepared = false
                 onCompleted()
             }
             videoView.setOnErrorListener { _, _, _ ->
+                if (!isCurrentGeneration(generation)) {
+                    return@setOnErrorListener true
+                }
                 prepared = false
                 onError()
                 true
             }
             videoView.setVideoURI(uri)
         } catch (exception: Exception) {
-            prepared = false
-            runCatching { videoView.stopPlayback() }
-            runCatching { videoView.suspend() }
-            onError()
+            if (isCurrentGeneration(generation)) {
+                prepared = false
+                runCatching { videoView.stopPlayback() }
+                runCatching { videoView.suspend() }
+                onError()
+            }
         }
     }
 
@@ -55,6 +68,7 @@ class FullscreenVideoPlaybackController(
     }
 
     fun stop() {
+        playbackGeneration++
         runCatching { videoView.stopPlayback() }
         runCatching { videoView.suspend() }
         prepared = false
@@ -84,5 +98,9 @@ class FullscreenVideoPlaybackController(
 
     fun currentPosition(): Int {
         return if (prepared) videoView.currentPosition else 0
+    }
+
+    private fun isCurrentGeneration(generation: Int): Boolean {
+        return generation == playbackGeneration
     }
 }

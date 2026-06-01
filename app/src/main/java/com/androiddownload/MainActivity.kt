@@ -905,12 +905,8 @@ class MainActivity : Activity() {
 
     private fun pauseCurrentPlayback() {
         audioPlaybackController.pause()
-        if (activeVideoMode == ActiveVideoMode.INLINE) {
-            inlineVideoPlaybackController.pause()
-        }
-        if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-            fullscreenVideoPlaybackController.pause()
-        }
+        inlineVideoPlaybackController.pause()
+        fullscreenVideoPlaybackController.pause()
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
         if (isVideoFullscreenOpen()) {
@@ -926,8 +922,10 @@ class MainActivity : Activity() {
             audioPlaybackController.resume()
         } else {
             if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
+                inlineVideoPlaybackController.pause()
                 fullscreenVideoPlaybackController.resume()
             } else if (activeVideoMode == ActiveVideoMode.INLINE) {
+                fullscreenVideoPlaybackController.pause()
                 inlineVideoPlaybackController.resume()
             }
         }

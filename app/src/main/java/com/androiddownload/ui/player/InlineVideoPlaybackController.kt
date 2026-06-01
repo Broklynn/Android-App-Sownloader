@@ -10,6 +10,7 @@ class InlineVideoPlaybackController(
     private val onError: () -> Unit
 ) {
     private var prepared = false
+    private var playbackGeneration = 0
 
     fun start(
         uri: Uri,
@@ -17,10 +18,11 @@ class InlineVideoPlaybackController(
         playWhenReady: Boolean = true,
         onStartError: (() -> Unit)? = null
     ) {
+        val generation = ++playbackGeneration
         prepared = false
         try {
             videoView.setOnPreparedListener {
-                if (!shouldHandleCallbacks()) {
+                if (!isCurrentGeneration(generation) || !shouldHandleCallbacks()) {
                     return@setOnPreparedListener
                 }
                 prepared = true
@@ -34,12 +36,12 @@ class InlineVideoPlaybackController(
                 onPrepared()
             }
             videoView.setOnCompletionListener {
-                if (shouldHandleCallbacks()) {
+                if (isCurrentGeneration(generation) && shouldHandleCallbacks()) {
                     onCompleted()
                 }
             }
             videoView.setOnErrorListener { _, _, _ ->
-                if (!shouldHandleCallbacks()) {
+                if (!isCurrentGeneration(generation) || !shouldHandleCallbacks()) {
                     return@setOnErrorListener true
                 }
                 onStartError?.invoke() ?: onError()
@@ -47,7 +49,9 @@ class InlineVideoPlaybackController(
             }
             videoView.setVideoURI(uri)
         } catch (exception: Exception) {
-            onStartError?.invoke()
+            if (isCurrentGeneration(generation)) {
+                onStartError?.invoke()
+            }
         }
     }
 
@@ -64,6 +68,7 @@ class InlineVideoPlaybackController(
     }
 
     fun stop() {
+        playbackGeneration++
         runCatching { videoView.stopPlayback() }
         runCatching { videoView.suspend() }
         prepared = false
@@ -93,5 +98,9 @@ class InlineVideoPlaybackController(
 
     fun currentPosition(): Int {
         return if (prepared) videoView.currentPosition else 0
+    }
+
+    private fun isCurrentGeneration(generation: Int): Boolean {
+        return generation == playbackGeneration
     }
 }
