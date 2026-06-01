@@ -109,6 +109,33 @@ Qualquer tentativa futura deve comecar por design e validacao de lifecycle, nao 
 - Back;
 - confirmar que nao ha audio duplicado.
 
+## Correcao De Duplicacao Inline/Fullscreen
+
+O bug de audio duplicado entre video inline e fullscreen foi corrigido mantendo a arquitetura com controllers separados.
+
+Causa provavel corrigida: callbacks assincronos antigos de `VideoView` podiam disparar depois de `stop()`. Isso podia marcar controllers antigos como `prepared` e iniciar playback mesmo apos a troca de modo. `InlineVideoPlaybackController` e `FullscreenVideoPlaybackController` passaram a usar geracao de playback:
+
+- `start()` captura a geracao atual;
+- `stop()` incrementa a geracao e marca `prepared=false`;
+- callbacks antigos de prepared, completion e error sao ignorados.
+
+Validacao manual confirmou que:
+
+- a duplicacao de audio parou;
+- sair e voltar para o app nao duplicou audio;
+- pausar nao deixa audio em fundo;
+- a troca inline/fullscreen preserva o comportamento principal.
+
+`FullscreenCoordinator` continua nao recomendado neste momento. O estado estavel e manter fullscreen dividido em controllers pequenos por responsabilidade.
+
+## Limitacao Conhecida De Seek
+
+Ao alternar entre vertical/inline e fullscreen, a posicao pode voltar cerca de 2 segundos. Isso provavelmente vem do comportamento de seek/keyframe do `VideoView`/`MediaPlayer`; o atraso varia por video e pelos keyframes disponiveis.
+
+Nao corrigir isso com compensacao manual, como somar alguns segundos na posicao. Essa abordagem tende a quebrar videos diferentes, keyframes diferentes e fluxos pausados.
+
+A solucao estrutural futura para posicao mais precisa e uma migracao planejada para Media3/ExoPlayer com uma unica instancia de player e troca de `PlayerView` entre inline/fullscreen.
+
 ## Proximas Opcoes Possiveis
 
 - Investigar um fullscreen coordinator completo apenas em etapa futura de design/teste de lifecycle, somente se o escopo conseguir separar claramente overlay, restore inline, back navigation, foreground/background e chrome.
@@ -392,6 +419,9 @@ Fluxos manuais minimos para runtime:
 - MP3 toca, pausa, resume, seek e completion;
 - MP4 toca inline, pausa, resume, seek e completion;
 - fullscreen abre, preserva posicao, pausa/resume e fecha restaurando inline;
+- alternar inline -> fullscreen -> inline, sair/voltar do app e confirmar que nao ha audio duplicado;
+- Back fecha fullscreen sem duplicar audio;
+- migracoes futuras de video devem confirmar posicao preservada, dentro das limitacoes de seek/keyframe do runtime usado;
 - erro/falha e skip quando aplicavel;
 - back fecha fullscreen antes de outras acoes;
 - audio/video deve ser pausado ou parado ao fim da validacao para evitar problemas de idle/uiautomator.
