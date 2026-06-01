@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_app_background">
@@ -806,6 +807,15 @@
                             android:layout_gravity="center"
                             android:visibility="gone" />
 
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/media3PlayerVideoView"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="center"
+                            android:visibility="gone"
+                            app:resize_mode="fit"
+                            app:use_controller="false" />
+
                         <ImageButton
                             android:id="@+id/playerFullscreenButton"
                             android:layout_width="42dp"
@@ -1378,6 +1388,15 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center" />
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/media3VideoFullscreenView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            app:resize_mode="fit"
+            app:use_controller="false" />
 
         <TextView
             android:id="@+id/videoFullscreenSeekFeedbackText"
