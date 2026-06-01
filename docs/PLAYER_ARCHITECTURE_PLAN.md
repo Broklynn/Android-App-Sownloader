@@ -61,6 +61,10 @@ Estes componentes ja estao extraidos e devem ser preservados durante o milestone
 - `InlineVideoPlaybackController`;
 - `FullscreenVideoPlaybackController`;
 - `FullscreenControlsController`;
+- `FullscreenChromeController`;
+- `FullscreenSeekController`;
+- `FullscreenOverlayController`;
+- `FullscreenGestureController`;
 - `PlayerListController`;
 - `PlayerListRenderer`;
 - `PlayerProgressCalculator`;
@@ -84,9 +88,30 @@ Os quatro controllers reais ja extraidos nao devem conhecer sessao/lista/categor
 - Nao mover o fullscreen coordinator completo ainda. Back navigation, orientacao, system UI, overlay lifecycle e restore inline continuam sensiveis e devem ser tratados em recorte proprio.
 - O proximo recorte deve ser escolhido com cuidado, porque o runtime principal de playback e os controles fullscreen ja sairam da `MainActivity`.
 
+## Decisao Sobre FullscreenCoordinator
+
+`FullscreenCoordinator` nao deve ser retomado agora.
+
+Uma tentativa nao commitada de consolidar o fullscreen em um coordinator unico causou regressao critica no lifecycle/background/foreground: ao sair do app e voltar, o audio duplicava; ao pausar, uma fonte parava e outra continuava tocando em fundo.
+
+A tentativa foi revertida: `MainActivity.kt` voltou ao ultimo commit, `FullscreenCoordinator.kt` foi removido, o workspace ficou limpo e o teste manual confirmou que a duplicacao foi resolvida.
+
+O estado estavel atual e a arquitetura com controllers separados por responsabilidade. Fullscreen deve continuar dividido em controllers pequenos para video, controles, chrome, seek, overlay e gestos. Nao consolidar open/close/restore/back/lifecycle em um coordinator unico sem desenho mais forte.
+
+Qualquer tentativa futura deve comecar por design e validacao de lifecycle, nao por extracao direta. A validacao obrigatoria para uma nova tentativa deve cobrir:
+
+- abrir fullscreen;
+- sair do app;
+- voltar;
+- pausar;
+- retomar;
+- fechar fullscreen;
+- Back;
+- confirmar que nao ha audio duplicado.
+
 ## Proximas Opcoes Possiveis
 
-- Investigar um fullscreen coordinator completo, somente se o escopo conseguir separar claramente overlay, restore inline, back navigation e chrome.
+- Investigar um fullscreen coordinator completo apenas em etapa futura de design/teste de lifecycle, somente se o escopo conseguir separar claramente overlay, restore inline, back navigation, foreground/background e chrome.
 - Investigar camada comum entre controllers, apenas se aparecer duplicacao real e repetida que reduza risco ao ser extraida.
 - Investigar reducao adicional da `MainActivity` como coordinator, priorizando limites de session/lista/categoria ou now playing/progresso.
 - Pausar refatoracoes de player e estabilizar, caso o proximo recorte misture responsabilidades demais.
