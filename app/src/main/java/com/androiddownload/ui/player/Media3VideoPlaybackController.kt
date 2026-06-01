@@ -19,6 +19,7 @@ class Media3VideoPlaybackController(
     private var prepared = false
     private var preparedNotified = false
     private var completedNotified = false
+    private var errorNotified = false
     private var released = false
 
     init {
@@ -47,8 +48,9 @@ class Media3VideoPlaybackController(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                if (!released) {
+                if (!released && !errorNotified) {
                     prepared = false
+                    errorNotified = true
                     onError()
                 }
             }
@@ -56,6 +58,9 @@ class Media3VideoPlaybackController(
     }
 
     fun attach(playerView: PlayerView) {
+        if (released) {
+            return
+        }
         playerView.player = player
     }
 
@@ -66,30 +71,41 @@ class Media3VideoPlaybackController(
     }
 
     fun start(uri: Uri, positionMs: Long = 0L, playWhenReady: Boolean = true) {
+        if (released) {
+            return
+        }
         prepared = false
         preparedNotified = false
         completedNotified = false
-        player.setMediaItem(MediaItem.fromUri(uri), positionMs)
+        errorNotified = false
+        player.setMediaItem(MediaItem.fromUri(uri), positionMs.coerceAtLeast(0L))
         player.playWhenReady = playWhenReady
         player.prepare()
     }
 
     fun pause() {
+        if (released) {
+            return
+        }
         player.pause()
     }
 
     fun resume() {
-        if (prepared) {
+        if (!released && prepared) {
             player.play()
         }
     }
 
     fun stop() {
+        if (released) {
+            return
+        }
         player.stop()
         player.clearMediaItems()
         prepared = false
         preparedNotified = false
         completedNotified = false
+        errorNotified = false
     }
 
     fun release() {
@@ -101,13 +117,13 @@ class Media3VideoPlaybackController(
     }
 
     fun seekTo(positionMs: Long) {
-        if (prepared) {
-            player.seekTo(positionMs)
+        if (!released && prepared) {
+            player.seekTo(positionMs.coerceAtLeast(0L))
         }
     }
 
     fun isPlaying(): Boolean {
-        return player.isPlaying
+        return !released && player.isPlaying
     }
 
     fun isPrepared(): Boolean {
@@ -115,10 +131,16 @@ class Media3VideoPlaybackController(
     }
 
     fun duration(): Long {
+        if (released) {
+            return 0L
+        }
         return player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
     }
 
     fun currentPosition(): Long {
+        if (released) {
+            return 0L
+        }
         return player.currentPosition.coerceAtLeast(0L)
     }
 }
