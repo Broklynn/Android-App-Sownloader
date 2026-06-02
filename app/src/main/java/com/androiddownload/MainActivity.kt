@@ -10,11 +10,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
@@ -29,6 +30,7 @@ import com.androiddownload.core.preferences.SettingsPreferencesStore
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.SharedTextUrlExtractor
 import com.androiddownload.download.service.DownloadForegroundService
+import com.androiddownload.ui.common.KeyboardController
 import com.androiddownload.ui.downloads.ClearFinishedDownloadsController
 import com.androiddownload.ui.downloads.DownloadDetailsDialogController
 import com.androiddownload.ui.downloads.DownloadsController
@@ -139,6 +141,7 @@ class MainActivity : Activity() {
     private val inlineControlsHandler = Handler(Looper.getMainLooper())
     private lateinit var fullscreenOverlayController: FullscreenOverlayController
     private lateinit var fullscreenGestureController: FullscreenGestureController
+    private var searchKeyboardDismissTargets: List<View> = emptyList()
     private val audioPlaybackController: AudioPlaybackController by lazy {
         AudioPlaybackController(
             context = this,
@@ -230,6 +233,8 @@ class MainActivity : Activity() {
         get() = QualityDialogController(this)
     private val quickDownloadSheetController: QuickDownloadSheetController
         get() = QuickDownloadSheetController(this)
+    private val keyboardController: KeyboardController
+        get() = KeyboardController(this)
     private val homeDownloadRequestController: HomeDownloadRequestController
         get() = HomeDownloadRequestController(
             selectedDefaultQualityProvider = settingsScreenController::selectedDefaultQualityOption,
@@ -243,7 +248,7 @@ class MainActivity : Activity() {
         get() = MainHeaderController(
             currentScreenProvider = { mainNavigationController.currentScreen },
             focusHomeUrlInput = homeScreenController::focusUrlInput,
-            showKeyboardForCurrentFocus = ::showKeyboardForCurrentFocus,
+            showKeyboardForCurrentFocus = keyboardController::showForCurrentFocus,
             toggleDownloadsSearch = downloadsController::toggleSearch
         )
     private val diagnosticsController: DiagnosticsController
@@ -258,9 +263,10 @@ class MainActivity : Activity() {
 
         val app = application as AndroidDownloadApp
         downloadTextProvider = DownloadTextProvider(this)
+        val homeUrlInput = findViewById<EditText>(R.id.urlInput)
         homeScreenController = HomeScreenController(
             activity = this,
-            urlInput = findViewById(R.id.urlInput),
+            urlInput = homeUrlInput,
             downloadButton = findViewById(R.id.downloadButton),
             errorText = findViewById(R.id.urlErrorText),
             recentUrlsSection = findViewById(R.id.recentDownloadsSection),
@@ -392,11 +398,13 @@ class MainActivity : Activity() {
         setupPlayer()
         setupSystemBackHandler()
 
+        val downloadsSearchInput = findViewById<EditText>(R.id.downloadsSearchInput)
+        searchKeyboardDismissTargets = listOf(homeUrlInput, downloadsSearchInput)
         downloadsController = DownloadsController(
             context = this,
             downloadsList = findViewById(R.id.downloadsList),
             emptyDownloadsText = findViewById(R.id.emptyDownloadsText),
-            searchInput = findViewById(R.id.downloadsSearchInput),
+            searchInput = downloadsSearchInput,
             filterAllButton = findViewById(R.id.downloadsFilterAllButton),
             filterActiveButton = findViewById(R.id.downloadsFilterActiveButton),
             filterPausedButton = findViewById(R.id.downloadsFilterPausedButton),
@@ -436,8 +444,8 @@ class MainActivity : Activity() {
                 onShareClick = { download ->
                     fileActionsController.share(download)
                 },
-                onRequestShowKeyboard = ::showKeyboardForCurrentFocus,
-                onRequestHideKeyboard = ::hideKeyboard
+                onRequestShowKeyboard = keyboardController::showForCurrentFocus,
+                onRequestHideKeyboard = keyboardController::hideFrom
             )
         )
         clearFinishedDownloadsController = ClearFinishedDownloadsController(
@@ -529,6 +537,11 @@ class MainActivity : Activity() {
         mainNavigationController.showHome()
         handleIntent(intent)
         homeScreenController.maybeShowClipboardPrompt(intent)
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        keyboardController.hideFocusedSearchOnOutsideTouch(event, searchKeyboardDismissTargets)
+        return super.dispatchTouchEvent(event)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -1204,16 +1217,6 @@ class MainActivity : Activity() {
 
     private fun resolvePlaybackUri(download: DownloadEntity): Uri? {
         return PlaybackUriResolver(contentResolver).resolve(download.destinationUri)
-    }
-
-    private fun showKeyboardForCurrentFocus() {
-        val inputManager = getSystemService(InputMethodManager::class.java) ?: return
-        currentFocus?.let { inputManager.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT) }
-    }
-
-    private fun hideKeyboard(view: View) {
-        val inputManager = getSystemService(InputMethodManager::class.java) ?: return
-        inputManager.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
