@@ -42,9 +42,7 @@ import com.androiddownload.ui.home.HomeController
 import com.androiddownload.ui.home.HomeScreenController
 import com.androiddownload.ui.navigation.MainHeaderController
 import com.androiddownload.ui.navigation.MainNavigationController
-import com.androiddownload.ui.navigation.PrimaryScreen
 import com.androiddownload.ui.downloads.QualityDialogController
-import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AudioPlaybackController
@@ -237,7 +235,7 @@ class MainActivity : Activity() {
         get() = QuickDownloadSheetController(this)
     private val homeDownloadRequestController: HomeDownloadRequestController
         get() = HomeDownloadRequestController(
-            selectedDefaultQualityProvider = ::selectedDefaultQualityOption,
+            selectedDefaultQualityProvider = settingsScreenController::selectedDefaultQualityOption,
             showInvalidUrl = homeScreenController::showError,
             invalidUrlMessageProvider = { getString(R.string.invalid_url) },
             addRecentDownloadUrl = homeScreenController::addRecentDownloadUrl,
@@ -316,11 +314,11 @@ class MainActivity : Activity() {
                 settingsScreenController.hide()
             },
             refreshHome = {
-                renderHomeRecentDownloads()
+                homeScreenController.renderRecentDownloads(currentDownloads)
                 homeScreenController.renderRecentUrls()
             },
             refreshSettings = { scrollToDownloadLocation ->
-                updateDefaultQualityText()
+                settingsScreenController.updateDefaultQualityText()
                 downloadLocationController.updateDownloadLocationText()
                 ytDlpUpdateController.updateUiState()
                 ytDlpUpdateController.updateAutoUpdateUiState()
@@ -499,8 +497,8 @@ class MainActivity : Activity() {
             showToast = ::showToast
         )
 
-        headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
-        defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
+        headerSearchButton.setOnClickListener { mainHeaderController.handleSearchClick() }
+        defaultQualityButton.setOnClickListener { settingsScreenController.showDefaultQualityDialog() }
         clearFinishedButton.setOnClickListener {
             clearFinishedDownloadsController.showClearFinishedDownloadsDialog()
         }
@@ -515,7 +513,7 @@ class MainActivity : Activity() {
             app.container.repository.observeDownloads().collectLatest { downloads ->
                 currentDownloads = downloads
                 downloadsController.submitDownloads(downloads)
-                renderHomeRecentDownloads()
+                homeScreenController.renderRecentDownloads(currentDownloads)
                 renderPlayerList()
                 val newHasActiveDownloads = downloads.any {
                     it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PREPARING
@@ -527,9 +525,9 @@ class MainActivity : Activity() {
             }
         }
 
-        updateDefaultQualityText()
+        settingsScreenController.updateDefaultQualityText()
         downloadLocationController.updateDownloadLocationText()
-        renderHomeRecentDownloads()
+        homeScreenController.renderRecentDownloads(currentDownloads)
         homeScreenController.renderRecentUrls()
         mainNavigationController.showHome()
         handleIntent(intent)
@@ -1211,10 +1209,6 @@ class MainActivity : Activity() {
         return PlaybackUriResolver(contentResolver).resolve(download.destinationUri)
     }
 
-    private fun handleHeaderSearchClick() {
-        mainHeaderController.handleSearchClick()
-    }
-
     private fun showKeyboardForCurrentFocus() {
         val inputManager = getSystemService(InputMethodManager::class.java) ?: return
         currentFocus?.let { inputManager.showSoftInput(it, InputMethodManager.SHOW_IMPLICIT) }
@@ -1223,10 +1217,6 @@ class MainActivity : Activity() {
     private fun hideKeyboard(view: View) {
         val inputManager = getSystemService(InputMethodManager::class.java) ?: return
         inputManager.hideSoftInputFromWindow(view.windowToken, 0)
-    }
-
-    private fun renderHomeRecentDownloads() {
-        homeScreenController.renderRecentDownloads(currentDownloads)
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
@@ -1321,7 +1311,7 @@ class MainActivity : Activity() {
         if (!DownloadSourceClassifier.shouldUseHttpDownloader(sharedUrl)) {
             quickDownloadSheetController.show(
                 url = sharedUrl,
-                options = downloadQualityOptions()
+                options = settingsScreenController.downloadQualityOptions()
             ) { option ->
                 startQueuedDownload(
                     url = sharedUrl,
@@ -1349,7 +1339,7 @@ class MainActivity : Activity() {
         url: String,
         homeController: HomeController? = null
     ) {
-        val options = downloadQualityOptions()
+        val options = settingsScreenController.downloadQualityOptions()
         qualityDialogController.showDownloadQualityDialog(options) { option ->
             startQueuedDownload(
                 url = url,
@@ -1386,22 +1376,6 @@ class MainActivity : Activity() {
                 }
             }
         }
-    }
-
-    private fun showDefaultQualityDialog() {
-        settingsScreenController.showDefaultQualityDialog()
-    }
-
-    private fun updateDefaultQualityText() {
-        settingsScreenController.updateDefaultQualityText()
-    }
-
-    private fun selectedDefaultQualityOption(): QualityOptionUi {
-        return settingsScreenController.selectedDefaultQualityOption()
-    }
-
-    private fun downloadQualityOptions(): List<QualityOptionUi> {
-        return settingsScreenController.downloadQualityOptions()
     }
 
     override fun onBackPressed() {
