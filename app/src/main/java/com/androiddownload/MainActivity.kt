@@ -59,8 +59,7 @@ import com.androiddownload.ui.player.PlayerCompletionResolver
 import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
-import com.androiddownload.ui.player.PlayerMediaLabelResolver
-import com.androiddownload.ui.player.PlayerNowPlayingTextFormatter
+import com.androiddownload.ui.player.PlayerNowPlayingPresenter
 import com.androiddownload.ui.player.PlayerPlaybackFailureAction
 import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
@@ -126,6 +125,7 @@ class MainActivity : Activity() {
     private lateinit var playerNextButton: Button
     private lateinit var playerFullscreenButton: ImageButton
     private lateinit var playerControlsController: PlayerControlsController
+    private lateinit var playerNowPlayingPresenter: PlayerNowPlayingPresenter
     private lateinit var fullscreenControlsController: FullscreenControlsController
     private lateinit var playerListRenderer: PlayerListRenderer
     private lateinit var videoFullscreenOverlay: View
@@ -384,6 +384,11 @@ class MainActivity : Activity() {
             videoFullscreenCurrentTimeText = videoFullscreenCurrentTimeText,
             videoFullscreenDurationText = videoFullscreenDurationText,
             videoFullscreenPlayPauseButton = videoFullscreenPlayPauseButton
+        )
+        playerNowPlayingPresenter = PlayerNowPlayingPresenter(
+            context = this,
+            controlsController = playerControlsController,
+            downloadTextProvider = downloadTextProvider
         )
         videoFullscreenSeekFeedbackText = findViewById(R.id.videoFullscreenSeekFeedbackText)
         fullscreenControlsController = FullscreenControlsController(
@@ -1008,50 +1013,13 @@ class MainActivity : Activity() {
     }
 
     private fun updateNowPlayingInfo(download: DownloadEntity? = currentPlayingDownload()) {
-        val current = download
-        if (current == null || currentPlayerIndex < 0) {
-            val text = PlayerNowPlayingTextFormatter.buildEmptyText(
-                title = getString(R.string.player_nothing_selected),
-                subtitle = getString(R.string.player_select_file),
-                meta = getString(R.string.player_status_stopped)
-            )
-            playerControlsController.updateNowPlaying(
-                title = text.title,
-                subtitle = text.subtitle,
-                meta = text.meta
-            )
-            return
-        }
-
-        val formatLabel = downloadTextProvider.formatLabel(current)
-        val text = PlayerNowPlayingTextFormatter.buildSelectedText(
-            fileName = current.fileName,
-            typeLabel = playerTypeLabel(current),
-            formatLabel = formatLabel,
-            statusLabel = playbackStatusLabel(),
+        playerNowPlayingPresenter.render(
+            download = download,
+            hasSelection = currentPlayerIndex >= 0,
+            isRunning = isCurrentPlaybackRunning(),
+            isPrepared = isCurrentPlaybackPrepared(),
             currentTime = playerCurrentTimeText.text,
             duration = playerDurationText.text
-        )
-        playerControlsController.updateNowPlaying(
-            title = text.title,
-            subtitle = text.subtitle,
-            meta = text.meta
-        )
-    }
-
-    private fun playbackStatusLabel(): String {
-        return when {
-            currentPlayerIndex < 0 -> getString(R.string.player_status_stopped)
-            isCurrentPlaybackRunning() -> getString(R.string.player_status_playing)
-            isCurrentPlaybackPrepared() -> getString(R.string.player_status_paused)
-            else -> getString(R.string.player_status_stopped)
-        }
-    }
-
-    private fun playerTypeLabel(download: DownloadEntity): String {
-        return PlayerMediaLabelResolver.typeLabel(
-            download = download,
-            formatLabel = downloadTextProvider.formatLabel(download)
         )
     }
 
