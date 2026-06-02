@@ -67,11 +67,10 @@ import com.androiddownload.ui.player.PlayerPlaybackFailureAction
 import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
 import com.androiddownload.ui.player.PlaybackUriResolver
-import com.androiddownload.ui.settings.DefaultQualityController
 import com.androiddownload.ui.settings.DiagnosticsController
 import com.androiddownload.ui.settings.DownloadLocationController
-import com.androiddownload.ui.settings.SettingsInfoController
 import com.androiddownload.ui.settings.SettingsController
+import com.androiddownload.ui.settings.SettingsScreenController
 import com.androiddownload.ui.settings.YtDlpUpdateController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -105,16 +104,14 @@ class MainActivity : Activity() {
     private lateinit var downloadTextProvider: DownloadTextProvider
     private lateinit var clearFinishedDownloadsController: ClearFinishedDownloadsController
     private lateinit var settingsController: SettingsController
-    private lateinit var settingsInfoController: SettingsInfoController
+    private lateinit var settingsScreenController: SettingsScreenController
     private lateinit var downloadLocationController: DownloadLocationController
     private lateinit var ytDlpUpdateController: YtDlpUpdateController
     private lateinit var mainNavigationController: MainNavigationController
     private lateinit var homeTabButton: Button
     private lateinit var downloadsTabButton: Button
     private lateinit var playerTabButton: Button
-    private lateinit var defaultQualityValueText: TextView
     private lateinit var defaultQualityButton: Button
-    private lateinit var defaultQualityController: DefaultQualityController
     private lateinit var playerMusicChip: Button
     private lateinit var playerVideoChip: Button
     private lateinit var playerVideoFrame: View
@@ -189,7 +186,7 @@ class MainActivity : Activity() {
             activity = this,
             appHeader = appHeader,
             mainTabBar = mainTabBar,
-            isSettingsVisible = { settingsController.isVisible() }
+            isSettingsVisible = { settingsScreenController.isVisible() }
         )
     }
     private val fullscreenSeekController = FullscreenSeekController()
@@ -310,14 +307,7 @@ class MainActivity : Activity() {
             downloadsTabButton = downloadsTabButton,
             playerTabButton = playerTabButton
         )
-        defaultQualityValueText = findViewById(R.id.defaultQualityValueText)
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
-        defaultQualityController = DefaultQualityController(
-            activity = this,
-            preferences = defaultQualityPreferences,
-            qualityDialogController = qualityDialogController,
-            valueText = defaultQualityValueText
-        )
         playerMusicChip = findViewById(R.id.playerMusicChip)
         playerVideoChip = findViewById(R.id.playerVideoChip)
         playerVideoFrame = findViewById(R.id.playerVideoFrame)
@@ -443,11 +433,12 @@ class MainActivity : Activity() {
             showToast = ::showToast
         )
 
-        settingsInfoController = SettingsInfoController(
+        settingsScreenController = SettingsScreenController(
             activity = this,
-            diagnosticsController = diagnosticsController
-        )
-        settingsController = SettingsController(
+            diagnosticsController = diagnosticsController,
+            defaultQualityPreferences = defaultQualityPreferences,
+            qualityDialogController = qualityDialogController,
+            defaultQualityValueText = findViewById(R.id.defaultQualityValueText),
             settingsContainer = findViewById(R.id.settingsContainer),
             downloadLocationCard = findViewById(R.id.downloadLocationCard),
             downloadLocationText = findViewById(R.id.downloadLocationText),
@@ -459,16 +450,13 @@ class MainActivity : Activity() {
             diagnosticsButton = findViewById(R.id.diagnosticsButton),
             aboutAppButton = findViewById(R.id.aboutAppButton),
             settingsCloseButton = findViewById(R.id.settingsCloseButton),
-            callbacks = SettingsController.Callbacks(
-                onChooseDownloadLocation = { downloadLocationController.chooseDownloadLocation() },
-                onUseDefaultDownloadLocation = { downloadLocationController.useDefaultDownloadLocation() },
-                onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
-                onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
-                onDiagnostics = settingsInfoController::showDiagnosticsDialog,
-                onAbout = settingsInfoController::showAboutDialog,
-                onCloseSettings = ::closeSettingsOverlay
-            )
+            onChooseDownloadLocation = { downloadLocationController.chooseDownloadLocation() },
+            onUseDefaultDownloadLocation = { downloadLocationController.useDefaultDownloadLocation() },
+            onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
+            onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
+            onCloseSettings = ::closeSettingsOverlay
         )
+        settingsController = settingsScreenController.settingsController
         downloadLocationController = DownloadLocationController(
             activity = this,
             settingsController = settingsController,
@@ -562,7 +550,7 @@ class MainActivity : Activity() {
         currentScreen = PrimaryScreen.HOME
         downloadsController.hideSearch(clearQuery = true)
         mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
-        settingsController.hide()
+        settingsScreenController.hide()
         renderHomeRecentDownloads()
         homeScreenController.renderRecentUrls()
     }
@@ -570,7 +558,7 @@ class MainActivity : Activity() {
     private fun showDownloads() {
         currentScreen = PrimaryScreen.DOWNLOADS
         mainNavigationController.showPrimaryScreen(PrimaryScreen.DOWNLOADS)
-        settingsController.hide()
+        settingsScreenController.hide()
         downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
         downloadsController.hideSearch(clearQuery = true)
     }
@@ -1267,7 +1255,7 @@ class MainActivity : Activity() {
         currentScreen = PrimaryScreen.PLAYER
         downloadsController.hideSearch(clearQuery = true)
         mainNavigationController.showPrimaryScreen(PrimaryScreen.PLAYER)
-        settingsController.hide()
+        settingsScreenController.hide()
         renderPlayerList()
     }
 
@@ -1278,7 +1266,7 @@ class MainActivity : Activity() {
         downloadLocationController.updateDownloadLocationText()
         ytDlpUpdateController.updateUiState()
         ytDlpUpdateController.updateAutoUpdateUiState()
-        settingsController.show(scrollToDownloadLocation)
+        settingsScreenController.show(scrollToDownloadLocation)
     }
 
     private fun closeSettingsOverlay() {
@@ -1315,7 +1303,7 @@ class MainActivity : Activity() {
             closeVideoFullscreen(restoreInline = true)
             return true
         }
-        if (settingsController.isVisible()) {
+        if (settingsScreenController.isVisible()) {
             closeSettingsOverlay()
             return true
         }
@@ -1425,19 +1413,19 @@ class MainActivity : Activity() {
     }
 
     private fun showDefaultQualityDialog() {
-        defaultQualityController.showDialog()
+        settingsScreenController.showDefaultQualityDialog()
     }
 
     private fun updateDefaultQualityText() {
-        defaultQualityController.updateText()
+        settingsScreenController.updateDefaultQualityText()
     }
 
     private fun selectedDefaultQualityOption(): QualityOptionUi {
-        return defaultQualityController.selectedOption()
+        return settingsScreenController.selectedDefaultQualityOption()
     }
 
     private fun downloadQualityOptions(): List<QualityOptionUi> {
-        return defaultQualityController.downloadQualityOptions()
+        return settingsScreenController.downloadQualityOptions()
     }
 
     override fun onBackPressed() {
