@@ -18,7 +18,6 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import android.widget.Button
 import android.widget.ImageButton
-import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -38,11 +37,9 @@ import com.androiddownload.ui.downloads.DownloadsController
 import com.androiddownload.ui.downloads.DownloadsFilter
 import com.androiddownload.ui.downloads.DownloadOpenRouter
 import com.androiddownload.ui.downloads.DownloadTextProvider
-import com.androiddownload.ui.home.ClipboardLinkPromptController
 import com.androiddownload.ui.home.HomeDownloadRequestController
 import com.androiddownload.ui.home.HomeController
-import com.androiddownload.ui.home.HomeRecentDownloadsRenderer
-import com.androiddownload.ui.home.HomeRecentUrlController
+import com.androiddownload.ui.home.HomeScreenController
 import com.androiddownload.ui.navigation.MainHeaderController
 import com.androiddownload.ui.navigation.MainNavigationController
 import com.androiddownload.ui.navigation.PrimaryScreen
@@ -103,15 +100,7 @@ class MainActivity : Activity() {
     private lateinit var settingsMenuButton: ImageButton
     private lateinit var headerSearchButton: ImageButton
     private lateinit var clearFinishedButton: Button
-    private lateinit var recentDownloadsSection: LinearLayout
-    private lateinit var clearRecentButton: Button
-    private lateinit var recentDownloadsList: LinearLayout
-    private lateinit var homeRecentDownloadsSection: LinearLayout
-    private lateinit var homeRecentDownloadsList: LinearLayout
-    private lateinit var homeController: HomeController
-    private lateinit var clipboardLinkPromptController: ClipboardLinkPromptController
-    private lateinit var homeRecentDownloadsRenderer: HomeRecentDownloadsRenderer
-    private lateinit var homeRecentUrlController: HomeRecentUrlController
+    private lateinit var homeScreenController: HomeScreenController
     private lateinit var downloadsController: DownloadsController
     private lateinit var downloadTextProvider: DownloadTextProvider
     private lateinit var clearFinishedDownloadsController: ClearFinishedDownloadsController
@@ -219,8 +208,6 @@ class MainActivity : Activity() {
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private val settingsPreferences: SharedPreferences
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
-    private val recentDownloadsStore: RecentDownloadsStore
-        get() = RecentDownloadsStore(settingsPreferences)
     private val defaultQualityPreferences: DefaultQualityPreferences
         get() = DefaultQualityPreferences(settingsPreferences)
     private val settingsPreferencesStore: SettingsPreferencesStore
@@ -255,16 +242,16 @@ class MainActivity : Activity() {
     private val homeDownloadRequestController: HomeDownloadRequestController
         get() = HomeDownloadRequestController(
             selectedDefaultQualityProvider = ::selectedDefaultQualityOption,
-            showInvalidUrl = { message -> homeController.showError(message) },
+            showInvalidUrl = homeScreenController::showError,
             invalidUrlMessageProvider = { getString(R.string.invalid_url) },
-            addRecentDownloadUrl = { url -> homeRecentUrlController.addUrl(url) },
+            addRecentDownloadUrl = homeScreenController::addRecentDownloadUrl,
             openQualityPicker = ::openYtDlpQualityPicker,
             startDownload = ::startQueuedDownload
         )
     private val mainHeaderController: MainHeaderController
         get() = MainHeaderController(
             currentScreenProvider = { currentScreen },
-            focusHomeUrlInput = homeController::focusUrlInput,
+            focusHomeUrlInput = homeScreenController::focusUrlInput,
             showKeyboardForCurrentFocus = ::showKeyboardForCurrentFocus,
             toggleDownloadsSearch = downloadsController::toggleSearch
         )
@@ -280,16 +267,25 @@ class MainActivity : Activity() {
 
         val app = application as AndroidDownloadApp
         downloadTextProvider = DownloadTextProvider(this)
-        homeController = HomeController(
+        homeScreenController = HomeScreenController(
+            activity = this,
             urlInput = findViewById(R.id.urlInput),
             downloadButton = findViewById(R.id.downloadButton),
-            errorText = findViewById(R.id.urlErrorText)
-        )
-        clipboardLinkPromptController = ClipboardLinkPromptController(
-            activity = this,
-            onUseUrl = { url ->
+            errorText = findViewById(R.id.urlErrorText),
+            recentUrlsSection = findViewById(R.id.recentDownloadsSection),
+            recentUrlsList = findViewById(R.id.recentDownloadsList),
+            clearRecentUrlsButton = findViewById(R.id.clearRecentButton),
+            recentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection),
+            recentDownloadsList = findViewById(R.id.homeRecentDownloadsList),
+            recentDownloadsStore = RecentDownloadsStore(settingsPreferences),
+            formatLabelProvider = downloadTextProvider::formatLabel,
+            statusLabelProvider = { download -> downloadTextProvider.statusLabel(download.status) },
+            sizeTextProvider = downloadTextProvider::summarySizeText,
+            badgeLabelProvider = downloadTextProvider::typeBadgeLabel,
+            onRecentDownloadSelected = ::showDownloadDetailsDialog,
+            onClipboardAccepted = { url ->
                 showHome()
-                homeController.setUrl(url)
+                homeScreenController.setUrl(url)
             }
         )
 
@@ -301,28 +297,6 @@ class MainActivity : Activity() {
         settingsMenuButton = findViewById(R.id.settingsMenuButton)
         headerSearchButton = findViewById(R.id.headerSearchButton)
         clearFinishedButton = findViewById(R.id.clearFinishedButton)
-        recentDownloadsSection = findViewById(R.id.recentDownloadsSection)
-        clearRecentButton = findViewById(R.id.clearRecentButton)
-        recentDownloadsList = findViewById(R.id.recentDownloadsList)
-        homeRecentDownloadsSection = findViewById(R.id.homeRecentDownloadsSection)
-        homeRecentDownloadsList = findViewById(R.id.homeRecentDownloadsList)
-        homeRecentUrlController = HomeRecentUrlController(
-            store = recentDownloadsStore,
-            section = recentDownloadsSection,
-            list = recentDownloadsList,
-            clearButton = clearRecentButton,
-            homeController = homeController
-        )
-        homeRecentDownloadsRenderer = HomeRecentDownloadsRenderer(
-            context = this,
-            section = homeRecentDownloadsSection,
-            list = homeRecentDownloadsList,
-            formatLabelProvider = downloadTextProvider::formatLabel,
-            statusLabelProvider = { download -> downloadTextProvider.statusLabel(download.status) },
-            sizeTextProvider = downloadTextProvider::summarySizeText,
-            badgeLabelProvider = downloadTextProvider::typeBadgeLabel,
-            onItemClick = ::showDownloadDetailsDialog
-        )
         homeTabButton = findViewById(R.id.homeTabButton)
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         playerTabButton = findViewById(R.id.playerTabButton)
@@ -523,10 +497,10 @@ class MainActivity : Activity() {
         clearFinishedButton.setOnClickListener {
             clearFinishedDownloadsController.showClearFinishedDownloadsDialog()
         }
-        homeController.onDownloadClick = onDownloadClick@{ rawUrl ->
+        homeScreenController.onDownloadRequested = onDownloadClick@{ rawUrl ->
             homeDownloadRequestController.handleDownloadRequest(
                 rawUrl = rawUrl,
-                homeController = homeController
+                homeController = homeScreenController.homeController
             )
         }
 
@@ -549,17 +523,17 @@ class MainActivity : Activity() {
         updateDefaultQualityText()
         downloadLocationController.updateDownloadLocationText()
         renderHomeRecentDownloads()
-        homeRecentUrlController.render()
+        homeScreenController.renderRecentUrls()
         showHome()
         handleIntent(intent)
-        clipboardLinkPromptController.maybePrompt(intent)
+        homeScreenController.maybeShowClipboardPrompt(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
-        clipboardLinkPromptController.maybePrompt(intent)
+        homeScreenController.maybeShowClipboardPrompt(intent)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -590,7 +564,7 @@ class MainActivity : Activity() {
         mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
         settingsController.hide()
         renderHomeRecentDownloads()
-        homeRecentUrlController.render()
+        homeScreenController.renderRecentUrls()
     }
 
     private fun showDownloads() {
@@ -1262,8 +1236,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderHomeRecentDownloads() {
-        val downloads = currentDownloads.take(MAX_HOME_RECENT_DOWNLOADS_DISPLAYED)
-        homeRecentDownloadsRenderer.render(downloads)
+        homeScreenController.renderRecentDownloads(currentDownloads)
     }
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
@@ -1379,7 +1352,7 @@ class MainActivity : Activity() {
         }
 
         showHome()
-        homeController.setUrl(sharedUrl)
+        homeScreenController.setUrl(sharedUrl)
         showToast(getString(R.string.shared_link_received))
         if (!DownloadSourceClassifier.shouldUseHttpDownloader(sharedUrl)) {
             quickDownloadSheetController.show(
@@ -1389,7 +1362,7 @@ class MainActivity : Activity() {
                 startQueuedDownload(
                     url = sharedUrl,
                     qualitySelector = option.formatSelector,
-                    homeController = homeController
+                    homeController = homeScreenController.homeController
                 )
             }
         }
@@ -1490,7 +1463,6 @@ class MainActivity : Activity() {
         const val EXTRA_OPEN_DOWNLOADS = "com.androiddownload.extra.OPEN_DOWNLOADS"
         const val EXTRA_OPEN_DOWNLOAD_ID = "com.androiddownload.extra.OPEN_DOWNLOAD_ID"
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"
-        private const val MAX_HOME_RECENT_DOWNLOADS_DISPLAYED = 4
         private const val REQUEST_DOWNLOAD_TREE = 2002
     }
 }
