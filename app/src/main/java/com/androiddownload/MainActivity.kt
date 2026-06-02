@@ -201,7 +201,6 @@ class MainActivity : Activity() {
     private var inlineFullscreenVisible = false
     private var hasActiveDownloads = false
     private var currentDownloads: List<DownloadEntity> = emptyList()
-    private var currentScreen = PrimaryScreen.HOME
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private val settingsPreferences: SharedPreferences
         get() = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE)
@@ -215,7 +214,7 @@ class MainActivity : Activity() {
         get() = DownloadOpenRouter(
             getDownloads = { currentDownloads },
             setPlayerCategoryForOpen = ::setPlayerCategoryForOpen,
-            showPlayer = ::showPlayer,
+            showPlayer = { mainNavigationController.showPlayer() },
             startPlaybackAt = { index -> startPlaybackAt(index) },
             openExternal = { download -> fileActionsController.open(download) },
             formatLabelProvider = downloadTextProvider::formatLabel
@@ -247,7 +246,7 @@ class MainActivity : Activity() {
         )
     private val mainHeaderController: MainHeaderController
         get() = MainHeaderController(
-            currentScreenProvider = { currentScreen },
+            currentScreenProvider = { mainNavigationController.currentScreen },
             focusHomeUrlInput = homeScreenController::focusUrlInput,
             showKeyboardForCurrentFocus = ::showKeyboardForCurrentFocus,
             toggleDownloadsSearch = downloadsController::toggleSearch
@@ -281,7 +280,7 @@ class MainActivity : Activity() {
             badgeLabelProvider = downloadTextProvider::typeBadgeLabel,
             onRecentDownloadSelected = ::showDownloadDetailsDialog,
             onClipboardAccepted = { url ->
-                showHome()
+                mainNavigationController.showHome()
                 homeScreenController.setUrl(url)
             }
         )
@@ -303,9 +302,33 @@ class MainActivity : Activity() {
             homeContainer = homeContainer,
             downloadsContainer = downloadsContainer,
             playerContainer = playerContainer,
+            settingsMenuButton = settingsMenuButton,
             homeTabButton = homeTabButton,
             downloadsTabButton = downloadsTabButton,
-            playerTabButton = playerTabButton
+            playerTabButton = playerTabButton,
+            hideDownloadsSearch = { clearQuery ->
+                downloadsController.hideSearch(clearQuery)
+            },
+            resetDownloadsFilter = {
+                downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
+            },
+            hideSettings = {
+                settingsScreenController.hide()
+            },
+            refreshHome = {
+                renderHomeRecentDownloads()
+                homeScreenController.renderRecentUrls()
+            },
+            refreshSettings = { scrollToDownloadLocation ->
+                updateDefaultQualityText()
+                downloadLocationController.updateDownloadLocationText()
+                ytDlpUpdateController.updateUiState()
+                ytDlpUpdateController.updateAutoUpdateUiState()
+                settingsScreenController.show(scrollToDownloadLocation)
+            },
+            renderPlayerList = {
+                renderPlayerList()
+            }
         )
         defaultQualityButton = findViewById(R.id.defaultQualityButton)
         playerMusicChip = findViewById(R.id.playerMusicChip)
@@ -454,7 +477,7 @@ class MainActivity : Activity() {
             onUseDefaultDownloadLocation = { downloadLocationController.useDefaultDownloadLocation() },
             onUpdateYtDlp = { ytDlpUpdateController.updateYtDlpManually() },
             onToggleAutoUpdateYtDlp = { ytDlpUpdateController.toggleAutoUpdateYtDlp() },
-            onCloseSettings = ::closeSettingsOverlay
+            onCloseSettings = mainNavigationController::closeSettingsOverlay
         )
         settingsController = settingsScreenController.settingsController
         downloadLocationController = DownloadLocationController(
@@ -476,10 +499,6 @@ class MainActivity : Activity() {
             showToast = ::showToast
         )
 
-        homeTabButton.setOnClickListener { showHome() }
-        downloadsTabButton.setOnClickListener { showDownloads() }
-        playerTabButton.setOnClickListener { showPlayer() }
-        settingsMenuButton.setOnClickListener { showSettings() }
         headerSearchButton.setOnClickListener { handleHeaderSearchClick() }
         defaultQualityButton.setOnClickListener { showDefaultQualityDialog() }
         clearFinishedButton.setOnClickListener {
@@ -512,7 +531,7 @@ class MainActivity : Activity() {
         downloadLocationController.updateDownloadLocationText()
         renderHomeRecentDownloads()
         homeScreenController.renderRecentUrls()
-        showHome()
+        mainNavigationController.showHome()
         handleIntent(intent)
         homeScreenController.maybeShowClipboardPrompt(intent)
     }
@@ -544,23 +563,6 @@ class MainActivity : Activity() {
     override fun onStop() {
         pauseCurrentPlayback()
         super.onStop()
-    }
-
-    private fun showHome() {
-        currentScreen = PrimaryScreen.HOME
-        downloadsController.hideSearch(clearQuery = true)
-        mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
-        settingsScreenController.hide()
-        renderHomeRecentDownloads()
-        homeScreenController.renderRecentUrls()
-    }
-
-    private fun showDownloads() {
-        currentScreen = PrimaryScreen.DOWNLOADS
-        mainNavigationController.showPrimaryScreen(PrimaryScreen.DOWNLOADS)
-        settingsScreenController.hide()
-        downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
-        downloadsController.hideSearch(clearQuery = true)
     }
 
     private fun setupPlayer() {
@@ -1251,32 +1253,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showPlayer() {
-        currentScreen = PrimaryScreen.PLAYER
-        downloadsController.hideSearch(clearQuery = true)
-        mainNavigationController.showPrimaryScreen(PrimaryScreen.PLAYER)
-        settingsScreenController.hide()
-        renderPlayerList()
-    }
-
-    private fun showSettings(scrollToDownloadLocation: Boolean = false) {
-        downloadsController.hideSearch(clearQuery = false)
-        mainNavigationController.showSettings()
-        updateDefaultQualityText()
-        downloadLocationController.updateDownloadLocationText()
-        ytDlpUpdateController.updateUiState()
-        ytDlpUpdateController.updateAutoUpdateUiState()
-        settingsScreenController.show(scrollToDownloadLocation)
-    }
-
-    private fun closeSettingsOverlay() {
-        when (currentScreen) {
-            PrimaryScreen.HOME -> showHome()
-            PrimaryScreen.DOWNLOADS -> showDownloads()
-            PrimaryScreen.PLAYER -> showPlayer()
-        }
-    }
-
     private fun setupSystemBackHandler() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         val callback = OnBackInvokedCallback {
@@ -1304,7 +1280,7 @@ class MainActivity : Activity() {
             return true
         }
         if (settingsScreenController.isVisible()) {
-            closeSettingsOverlay()
+            mainNavigationController.closeSettingsOverlay()
             return true
         }
         return false
@@ -1318,7 +1294,7 @@ class MainActivity : Activity() {
         }
 
         if (intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true) {
-            showDownloads()
+            mainNavigationController.showDownloads()
             return
         }
 
@@ -1334,12 +1310,12 @@ class MainActivity : Activity() {
             intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
         )
         if (sharedUrl == null) {
-            showHome()
+            mainNavigationController.showHome()
             showToast(getString(R.string.invalid_url))
             return
         }
 
-        showHome()
+        mainNavigationController.showHome()
         homeScreenController.setUrl(sharedUrl)
         showToast(getString(R.string.shared_link_received))
         if (!DownloadSourceClassifier.shouldUseHttpDownloader(sharedUrl)) {
@@ -1398,7 +1374,7 @@ class MainActivity : Activity() {
                 homeController?.clear()
                 homeController?.setLoading(false)
                 resetLoadingOnExit = false
-                showDownloads()
+                mainNavigationController.showDownloads()
                 DownloadForegroundService.start(this@MainActivity, downloadId)
             } catch (exception: CancellationException) {
                 throw exception
