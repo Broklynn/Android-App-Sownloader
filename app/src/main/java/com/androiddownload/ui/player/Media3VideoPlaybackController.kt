@@ -20,6 +20,7 @@ class Media3VideoPlaybackController(
     private var preparedNotified = false
     private var completedNotified = false
     private var errorNotified = false
+    private var onStartError: (() -> Unit)? = null
     private var released = false
 
     init {
@@ -51,7 +52,8 @@ class Media3VideoPlaybackController(
                 if (!released && !errorNotified) {
                     prepared = false
                     errorNotified = true
-                    onError()
+                    onStartError?.invoke() ?: onError()
+                    onStartError = null
                 }
             }
         })
@@ -70,15 +72,16 @@ class Media3VideoPlaybackController(
         }
     }
 
-    fun start(uri: Uri, positionMs: Long = 0L, playWhenReady: Boolean = true) {
+    fun start(uri: Uri, positionMs: Int = 0, playWhenReady: Boolean = true, onStartError: (() -> Unit)? = null) {
         if (released) {
             return
         }
+        this.onStartError = onStartError
         prepared = false
         preparedNotified = false
         completedNotified = false
         errorNotified = false
-        player.setMediaItem(MediaItem.fromUri(uri), positionMs.coerceAtLeast(0L))
+        player.setMediaItem(MediaItem.fromUri(uri), positionMs.toLong().coerceAtLeast(0L))
         player.playWhenReady = playWhenReady
         player.prepare()
     }
@@ -106,6 +109,7 @@ class Media3VideoPlaybackController(
         preparedNotified = false
         completedNotified = false
         errorNotified = false
+        onStartError = null
     }
 
     fun release() {
@@ -116,9 +120,9 @@ class Media3VideoPlaybackController(
         }
     }
 
-    fun seekTo(positionMs: Long) {
+    fun seekTo(positionMs: Int) {
         if (!released && prepared) {
-            player.seekTo(positionMs.coerceAtLeast(0L))
+            player.seekTo(positionMs.toLong().coerceAtLeast(0L))
         }
     }
 
@@ -130,17 +134,17 @@ class Media3VideoPlaybackController(
         return prepared
     }
 
-    fun duration(): Long {
+    fun duration(): Int {
         if (released) {
-            return 0L
+            return 0
         }
-        return player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
+        return player.duration.takeIf { it != C.TIME_UNSET && it > 0L }?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     }
 
-    fun currentPosition(): Long {
+    fun currentPosition(): Int {
         if (released) {
-            return 0L
+            return 0
         }
-        return player.currentPosition.coerceAtLeast(0L)
+        return player.currentPosition.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }

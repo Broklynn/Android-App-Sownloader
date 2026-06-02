@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.ui.PlayerView
 import com.androiddownload.core.files.FileActionsController
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -56,8 +57,7 @@ import com.androiddownload.ui.player.FullscreenControlsController
 import com.androiddownload.ui.player.FullscreenGestureController
 import com.androiddownload.ui.player.FullscreenOverlayController
 import com.androiddownload.ui.player.FullscreenSeekController
-import com.androiddownload.ui.player.FullscreenVideoPlaybackController
-import com.androiddownload.ui.player.InlineVideoPlaybackController
+import com.androiddownload.ui.player.Media3VideoPlaybackController
 import com.androiddownload.ui.player.PlayerAdjacentNavigator
 import com.androiddownload.ui.player.PlayerCategory
 import com.androiddownload.ui.player.PlayerCompletionAction
@@ -132,6 +132,7 @@ class MainActivity : Activity() {
     private lateinit var playerVideoFrame: View
     private lateinit var playerArtworkPlaceholder: TextView
     private lateinit var playerVideoView: AspectRatioVideoView
+    private lateinit var media3PlayerVideoView: PlayerView
     private lateinit var playerNowPlayingTitle: TextView
     private lateinit var playerNowPlayingSubtitle: TextView
     private lateinit var playerNowPlayingMetaText: TextView
@@ -149,6 +150,7 @@ class MainActivity : Activity() {
     private lateinit var videoFullscreenControls: View
     private lateinit var videoFullscreenCloseButton: ImageButton
     private lateinit var videoFullscreenView: AspectRatioVideoView
+    private lateinit var media3VideoFullscreenView: PlayerView
     private lateinit var videoFullscreenSeekBar: SeekBar
     private lateinit var videoFullscreenCurrentTimeText: TextView
     private lateinit var videoFullscreenDurationText: TextView
@@ -176,46 +178,24 @@ class MainActivity : Activity() {
             }
         )
     }
-    private val inlineVideoPlaybackController: InlineVideoPlaybackController by lazy {
-        InlineVideoPlaybackController(
-            videoView = playerVideoView,
-            shouldHandleCallbacks = { activeVideoMode == ActiveVideoMode.INLINE },
+    private val media3VideoPlaybackController: Media3VideoPlaybackController by lazy {
+        Media3VideoPlaybackController(
+            context = this,
             onPrepared = {
-                playerArtworkPlaceholder.visibility = View.GONE
-                playerVideoView.visibility = View.VISIBLE
-                updatePlaybackButtons()
-                updateNowPlayingInfo()
-                updatePlaybackProgress()
+                if (playerCategory == PlayerCategory.VIDEO && activeVideoMode != ActiveVideoMode.NONE) {
+                    playerArtworkPlaceholder.visibility = View.GONE
+                    updatePlaybackButtons()
+                    updateNowPlayingInfo()
+                    updatePlaybackProgress()
+                    if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
+                        fullscreenControlsController.scheduleAutoHide()
+                    } else {
+                        scheduleInlineFullscreenAutoHide()
+                    }
+                }
             },
             onCompleted = ::handlePlaybackCompleted,
             onError = ::showPlaybackErrorAndMaybeSkip
-        )
-    }
-    private val fullscreenVideoPlaybackController: FullscreenVideoPlaybackController by lazy {
-        FullscreenVideoPlaybackController(
-            videoView = videoFullscreenView,
-            onPrepared = {
-                if (activeVideoMode == ActiveVideoMode.FULLSCREEN && isVideoFullscreenOpen()) {
-                    updatePlaybackButtons()
-                    updateNowPlayingInfo()
-                    updatePlaybackProgress()
-                    fullscreenControlsController.scheduleAutoHide()
-                }
-            },
-            onCompleted = {
-                if (activeVideoMode == ActiveVideoMode.FULLSCREEN && isVideoFullscreenOpen()) {
-                    playbackHandler.removeCallbacksAndMessages(null)
-                    updatePlaybackButtons()
-                    updateNowPlayingInfo()
-                    updatePlaybackProgress()
-                }
-            },
-            onError = {
-                if (activeVideoMode == ActiveVideoMode.FULLSCREEN && isVideoFullscreenOpen()) {
-                    showToast(getString(R.string.player_playback_error))
-                    closeVideoFullscreen(restoreInline = false)
-                }
-            }
         )
     }
     private val fullscreenChromeController: FullscreenChromeController by lazy {
@@ -370,6 +350,7 @@ class MainActivity : Activity() {
         playerVideoFrame = findViewById(R.id.playerVideoFrame)
         playerArtworkPlaceholder = findViewById(R.id.playerArtworkPlaceholder)
         playerVideoView = findViewById(R.id.playerVideoView)
+        media3PlayerVideoView = findViewById(R.id.media3PlayerVideoView)
         playerNowPlayingTitle = findViewById(R.id.playerNowPlayingTitle)
         playerNowPlayingSubtitle = findViewById(R.id.playerNowPlayingSubtitle)
         playerNowPlayingMetaText = findViewById(R.id.playerNowPlayingMetaText)
@@ -395,6 +376,7 @@ class MainActivity : Activity() {
             titleText = findViewById(R.id.videoFullscreenTitleText)
         )
         videoFullscreenView = findViewById(R.id.videoFullscreenView)
+        media3VideoFullscreenView = findViewById(R.id.media3VideoFullscreenView)
         videoFullscreenSeekBar = findViewById(R.id.videoFullscreenSeekBar)
         videoFullscreenCurrentTimeText = findViewById(R.id.videoFullscreenCurrentTimeText)
         videoFullscreenDurationText = findViewById(R.id.videoFullscreenDurationText)
@@ -812,7 +794,8 @@ class MainActivity : Activity() {
         stopAudioPlayback()
         closeVideoFullscreen(restoreInline = false)
         playerArtworkPlaceholder.visibility = View.GONE
-        playerVideoView.visibility = View.VISIBLE
+        playerVideoView.visibility = View.GONE
+        media3PlayerVideoView.visibility = View.VISIBLE
         activeVideoMode = ActiveVideoMode.INLINE
         prepareInlineVideo(uri = uri, positionMs = 0, playWhenReady = true, onError = {
             handlePlaybackStartFailure(index, skipBudget)
@@ -827,7 +810,13 @@ class MainActivity : Activity() {
     ) {
         stopFullscreenVideoPlayback()
         activeVideoMode = ActiveVideoMode.INLINE
-        inlineVideoPlaybackController.start(
+        playerVideoView.visibility = View.GONE
+        videoFullscreenView.visibility = View.GONE
+        media3VideoFullscreenView.visibility = View.GONE
+        media3VideoPlaybackController.detach(media3VideoFullscreenView)
+        media3PlayerVideoView.visibility = View.VISIBLE
+        media3VideoPlaybackController.attach(media3PlayerVideoView)
+        media3VideoPlaybackController.start(
             uri = uri,
             positionMs = positionMs,
             playWhenReady = playWhenReady,
@@ -905,8 +894,7 @@ class MainActivity : Activity() {
 
     private fun pauseCurrentPlayback() {
         audioPlaybackController.pause()
-        inlineVideoPlaybackController.pause()
-        fullscreenVideoPlaybackController.pause()
+        media3VideoPlaybackController.pause()
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
         if (isVideoFullscreenOpen()) {
@@ -920,14 +908,8 @@ class MainActivity : Activity() {
     private fun resumeCurrentPlayback() {
         if (playerCategory == PlayerCategory.MUSIC) {
             audioPlaybackController.resume()
-        } else {
-            if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
-                inlineVideoPlaybackController.pause()
-                fullscreenVideoPlaybackController.resume()
-            } else if (activeVideoMode == ActiveVideoMode.INLINE) {
-                fullscreenVideoPlaybackController.pause()
-                inlineVideoPlaybackController.resume()
-            }
+        } else if (activeVideoMode != ActiveVideoMode.NONE) {
+            media3VideoPlaybackController.resume()
         }
         updatePlaybackButtons()
         updateNowPlayingInfo()
@@ -969,15 +951,22 @@ class MainActivity : Activity() {
     }
 
     private fun stopVideoPlayback() {
-        inlineVideoPlaybackController.stop()
+        media3VideoPlaybackController.stop()
+        media3VideoPlaybackController.detach(media3PlayerVideoView)
+        media3VideoPlaybackController.detach(media3VideoFullscreenView)
         playerVideoView.visibility = View.GONE
-        if (activeVideoMode == ActiveVideoMode.INLINE) {
+        videoFullscreenView.visibility = View.GONE
+        media3PlayerVideoView.visibility = View.GONE
+        media3VideoFullscreenView.visibility = View.GONE
+        if (activeVideoMode == ActiveVideoMode.INLINE || activeVideoMode == ActiveVideoMode.FULLSCREEN) {
             activeVideoMode = ActiveVideoMode.NONE
         }
     }
 
     private fun stopFullscreenVideoPlayback() {
-        fullscreenVideoPlaybackController.stop()
+        media3VideoPlaybackController.detach(media3VideoFullscreenView)
+        media3VideoFullscreenView.visibility = View.GONE
+        videoFullscreenView.visibility = View.GONE
         fullscreenUserSeeking = false
         if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
             activeVideoMode = ActiveVideoMode.NONE
@@ -988,6 +977,7 @@ class MainActivity : Activity() {
         inlineControlsHandler.removeCallbacksAndMessages(null)
         fullscreenControlsController.clearCallbacks()
         stopCurrentPlayback(clearSelection = true)
+        media3VideoPlaybackController.release()
     }
 
     private fun playAdjacent(offset: Int) {
@@ -1122,8 +1112,8 @@ class MainActivity : Activity() {
     private fun isCurrentPlaybackRunning(): Boolean {
         return when (activePlaybackSource()) {
             ActivePlaybackSource.AUDIO -> audioPlaybackController.isPlaying()
-            ActivePlaybackSource.FULLSCREEN_VIDEO -> fullscreenVideoPlaybackController.isPlaying()
-            ActivePlaybackSource.INLINE_VIDEO -> inlineVideoPlaybackController.isPlaying()
+            ActivePlaybackSource.FULLSCREEN_VIDEO,
+            ActivePlaybackSource.INLINE_VIDEO -> media3VideoPlaybackController.isPlaying()
             ActivePlaybackSource.NONE -> false
         }
     }
@@ -1131,8 +1121,8 @@ class MainActivity : Activity() {
     private fun isCurrentPlaybackPrepared(): Boolean {
         return when (activePlaybackSource()) {
             ActivePlaybackSource.AUDIO -> audioPlaybackController.isPrepared()
-            ActivePlaybackSource.FULLSCREEN_VIDEO -> fullscreenVideoPlaybackController.isPrepared()
-            ActivePlaybackSource.INLINE_VIDEO -> inlineVideoPlaybackController.isPrepared()
+            ActivePlaybackSource.FULLSCREEN_VIDEO,
+            ActivePlaybackSource.INLINE_VIDEO -> media3VideoPlaybackController.isPrepared()
             ActivePlaybackSource.NONE -> false
         }
     }
@@ -1142,10 +1132,9 @@ class MainActivity : Activity() {
             when (activePlaybackSource()) {
                 ActivePlaybackSource.AUDIO ->
                     audioPlaybackController.duration()
-                ActivePlaybackSource.FULLSCREEN_VIDEO ->
-                    fullscreenVideoPlaybackController.duration()
+                ActivePlaybackSource.FULLSCREEN_VIDEO,
                 ActivePlaybackSource.INLINE_VIDEO ->
-                    inlineVideoPlaybackController.duration()
+                    media3VideoPlaybackController.duration()
                 ActivePlaybackSource.NONE -> 0
             }
         }.getOrDefault(0)
@@ -1156,10 +1145,9 @@ class MainActivity : Activity() {
             when (activePlaybackSource()) {
                 ActivePlaybackSource.AUDIO ->
                     audioPlaybackController.currentPosition()
-                ActivePlaybackSource.FULLSCREEN_VIDEO ->
-                    fullscreenVideoPlaybackController.currentPosition()
+                ActivePlaybackSource.FULLSCREEN_VIDEO,
                 ActivePlaybackSource.INLINE_VIDEO ->
-                    inlineVideoPlaybackController.currentPosition()
+                    media3VideoPlaybackController.currentPosition()
                 ActivePlaybackSource.NONE -> 0
             }
         }.getOrDefault(0)
@@ -1169,8 +1157,8 @@ class MainActivity : Activity() {
         runCatching {
             when (activePlaybackSource()) {
                 ActivePlaybackSource.AUDIO -> audioPlaybackController.seekTo(positionMs)
-                ActivePlaybackSource.FULLSCREEN_VIDEO -> fullscreenVideoPlaybackController.seekTo(positionMs)
-                ActivePlaybackSource.INLINE_VIDEO -> inlineVideoPlaybackController.seekTo(positionMs)
+                ActivePlaybackSource.FULLSCREEN_VIDEO,
+                ActivePlaybackSource.INLINE_VIDEO -> media3VideoPlaybackController.seekTo(positionMs)
                 ActivePlaybackSource.NONE -> Unit
             }
         }
@@ -1179,9 +1167,8 @@ class MainActivity : Activity() {
     private fun openCurrentVideoFullscreen() {
         if (playerCategory != PlayerCategory.VIDEO) return
         val download = currentPlayingDownload() ?: return
-        val playbackUri = resolvePlaybackUri(download)
 
-        if (playbackUri == null) {
+        if (resolvePlaybackUri(download) == null) {
             showToast(getString(R.string.player_playback_error))
             return
         }
@@ -1191,7 +1178,8 @@ class MainActivity : Activity() {
         playbackHandler.removeCallbacksAndMessages(null)
         inlineControlsHandler.removeCallbacksAndMessages(null)
         inlineFullscreenVisible = false
-        stopVideoPlayback()
+        media3VideoPlaybackController.detach(media3PlayerVideoView)
+        media3PlayerVideoView.visibility = View.GONE
         playerVideoView.visibility = View.GONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
         playerControlsController.updateFullscreenProgress(
@@ -1203,44 +1191,50 @@ class MainActivity : Activity() {
         fullscreenOverlayController.show(download.fileName)
         fullscreenControlsController.showControls()
         activeVideoMode = ActiveVideoMode.FULLSCREEN
-        fullscreenVideoPlaybackController.start(
-            uri = playbackUri,
-            positionMs = position,
-            playWhenReady = wasPlaying
-        )
+        videoFullscreenView.visibility = View.GONE
+        media3VideoFullscreenView.visibility = View.VISIBLE
+        media3VideoPlaybackController.attach(media3VideoFullscreenView)
+        if (wasPlaying) {
+            media3VideoPlaybackController.resume()
+        } else {
+            media3VideoPlaybackController.pause()
+        }
+        updatePlaybackProgress()
     }
 
     private fun closeVideoFullscreen(restoreInline: Boolean) {
         if (!isVideoFullscreenOpen()) return
         val download = currentPlayingDownload()
-        val position = currentPosition()
         val wasPlaying = isCurrentPlaybackRunning()
         playbackHandler.removeCallbacksAndMessages(null)
-        stopFullscreenVideoPlayback()
+        media3VideoPlaybackController.detach(media3VideoFullscreenView)
+        media3VideoFullscreenView.visibility = View.GONE
+        videoFullscreenView.visibility = View.GONE
         fullscreenOverlayController.hide()
         fullscreenControlsController.clearCallbacks()
         fullscreenChromeController.exitFullscreen()
         playerControlsController.resetFullscreenProgress(getString(R.string.player_time_zero))
 
         if (restoreInline && playerCategory == PlayerCategory.VIDEO && download != null) {
-            val playbackUri = resolvePlaybackUri(download)
-            if (playbackUri == null) {
+            if (resolvePlaybackUri(download) == null) {
                 showToast(getString(R.string.player_playback_error))
                 stopCurrentPlayback(clearSelection = true)
                 return
             }
             playerArtworkPlaceholder.visibility = View.GONE
-            playerVideoView.visibility = View.VISIBLE
-            prepareInlineVideo(
-                uri = playbackUri,
-                positionMs = position,
-                playWhenReady = wasPlaying,
-                onError = {
-                    showToast(getString(R.string.player_playback_error))
-                    stopCurrentPlayback(clearSelection = true)
-                }
-            )
+            playerVideoView.visibility = View.GONE
+            media3PlayerVideoView.visibility = View.VISIBLE
+            activeVideoMode = ActiveVideoMode.INLINE
+            media3VideoPlaybackController.attach(media3PlayerVideoView)
+            if (wasPlaying) {
+                media3VideoPlaybackController.resume()
+            } else {
+                media3VideoPlaybackController.pause()
+            }
+            updatePlaybackProgress()
         } else {
+            activeVideoMode = ActiveVideoMode.NONE
+            media3VideoPlaybackController.stop()
             updatePlaybackButtons()
             updateNowPlayingInfo()
         }
@@ -1251,7 +1245,7 @@ class MainActivity : Activity() {
     }
 
     private fun seekFullscreenBy(deltaMs: Int) {
-        if (!isVideoFullscreenOpen() || !fullscreenVideoPlaybackController.isPrepared()) return
+        if (!isVideoFullscreenOpen() || !media3VideoPlaybackController.isPrepared()) return
         val duration = currentDuration()
         if (duration <= 0) return
         val target = fullscreenSeekController.targetPosition(
