@@ -60,6 +60,7 @@ import com.androiddownload.ui.player.PlayerControlsController
 import com.androiddownload.ui.player.PlayerListController
 import com.androiddownload.ui.player.PlayerListRenderer
 import com.androiddownload.ui.player.PlayerNowPlayingPresenter
+import com.androiddownload.ui.player.PlayerPlaybackButtonsPresenter
 import com.androiddownload.ui.player.PlayerPlaybackFailureAction
 import com.androiddownload.ui.player.PlayerPlaybackFailureResolver
 import com.androiddownload.ui.player.PlayerProgressCalculator
@@ -126,6 +127,9 @@ class MainActivity : Activity() {
     private lateinit var playerFullscreenButton: ImageButton
     private lateinit var playerControlsController: PlayerControlsController
     private lateinit var playerNowPlayingPresenter: PlayerNowPlayingPresenter
+    private val playerPlaybackButtonsPresenter by lazy {
+        PlayerPlaybackButtonsPresenter(this, playerControlsController)
+    }
     private lateinit var fullscreenControlsController: FullscreenControlsController
     private lateinit var playerListRenderer: PlayerListRenderer
     private lateinit var videoFullscreenOverlay: View
@@ -1001,14 +1005,11 @@ class MainActivity : Activity() {
     }
 
     private fun updatePlaybackButtons() {
-        val hasItems = playerItems.isNotEmpty()
-        playerControlsController.updatePlaybackButtons(
-            hasItems = hasItems,
+        playerPlaybackButtonsPresenter.render(
+            hasItems = playerItems.isNotEmpty(),
             currentIndex = currentPlayerIndex,
             lastIndex = playerItems.lastIndex,
-            isRunning = isCurrentPlaybackRunning(),
-            playText = getString(R.string.player_play),
-            pauseText = getString(R.string.player_pause)
+            isRunning = isCurrentPlaybackRunning()
         )
     }
 
