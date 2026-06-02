@@ -5,13 +5,12 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.VideoView
 import com.androiddownload.R
 
 class PlayerControlsController(
     private val playerMusicChip: Button,
     private val playerVideoChip: Button,
-    private val playerVideoView: VideoView,
+    private val inlineVideoView: View,
     private val playerFullscreenButton: ImageButton,
     private val playerNowPlayingTitle: TextView,
     private val playerNowPlayingSubtitle: TextView,
@@ -45,7 +44,7 @@ class PlayerControlsController(
                 button.context.getColor(if (selected) R.color.brand else R.color.text_muted)
             )
         }
-        playerVideoView.visibility = if (isVideoVisible) View.VISIBLE else View.GONE
+        inlineVideoView.visibility = if (isVideoVisible) View.VISIBLE else View.GONE
         playerFullscreenButton.visibility = if (showFullscreenButton) View.VISIBLE else View.GONE
     }
 

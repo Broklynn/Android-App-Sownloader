@@ -51,7 +51,6 @@ import com.androiddownload.ui.downloads.QualityOptionUi
 import com.androiddownload.ui.downloads.QuickDownloadSheetController
 import com.androiddownload.ui.player.ActiveVideoMode
 import com.androiddownload.ui.player.AudioPlaybackController
-import com.androiddownload.ui.player.AspectRatioVideoView
 import com.androiddownload.ui.player.FullscreenChromeController
 import com.androiddownload.ui.player.FullscreenControlsController
 import com.androiddownload.ui.player.FullscreenGestureController
@@ -131,7 +130,6 @@ class MainActivity : Activity() {
     private lateinit var playerVideoChip: Button
     private lateinit var playerVideoFrame: View
     private lateinit var playerArtworkPlaceholder: TextView
-    private lateinit var playerVideoView: AspectRatioVideoView
     private lateinit var media3PlayerVideoView: PlayerView
     private lateinit var playerNowPlayingTitle: TextView
     private lateinit var playerNowPlayingSubtitle: TextView
@@ -149,7 +147,6 @@ class MainActivity : Activity() {
     private lateinit var videoFullscreenOverlay: View
     private lateinit var videoFullscreenControls: View
     private lateinit var videoFullscreenCloseButton: ImageButton
-    private lateinit var videoFullscreenView: AspectRatioVideoView
     private lateinit var media3VideoFullscreenView: PlayerView
     private lateinit var videoFullscreenSeekBar: SeekBar
     private lateinit var videoFullscreenCurrentTimeText: TextView
@@ -349,7 +346,6 @@ class MainActivity : Activity() {
         playerVideoChip = findViewById(R.id.playerVideoChip)
         playerVideoFrame = findViewById(R.id.playerVideoFrame)
         playerArtworkPlaceholder = findViewById(R.id.playerArtworkPlaceholder)
-        playerVideoView = findViewById(R.id.playerVideoView)
         media3PlayerVideoView = findViewById(R.id.media3PlayerVideoView)
         playerNowPlayingTitle = findViewById(R.id.playerNowPlayingTitle)
         playerNowPlayingSubtitle = findViewById(R.id.playerNowPlayingSubtitle)
@@ -375,7 +371,6 @@ class MainActivity : Activity() {
             overlay = videoFullscreenOverlay,
             titleText = findViewById(R.id.videoFullscreenTitleText)
         )
-        videoFullscreenView = findViewById(R.id.videoFullscreenView)
         media3VideoFullscreenView = findViewById(R.id.media3VideoFullscreenView)
         videoFullscreenSeekBar = findViewById(R.id.videoFullscreenSeekBar)
         videoFullscreenCurrentTimeText = findViewById(R.id.videoFullscreenCurrentTimeText)
@@ -384,7 +379,7 @@ class MainActivity : Activity() {
         playerControlsController = PlayerControlsController(
             playerMusicChip = playerMusicChip,
             playerVideoChip = playerVideoChip,
-            playerVideoView = playerVideoView,
+            inlineVideoView = media3PlayerVideoView,
             playerFullscreenButton = playerFullscreenButton,
             playerNowPlayingTitle = playerNowPlayingTitle,
             playerNowPlayingSubtitle = playerNowPlayingSubtitle,
@@ -784,7 +779,7 @@ class MainActivity : Activity() {
         stopFullscreenVideoPlayback()
         activeVideoMode = ActiveVideoMode.NONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
-        playerVideoView.visibility = View.GONE
+        media3PlayerVideoView.visibility = View.GONE
         currentAudioStartIndex = index
         currentAudioSkipBudget = skipBudget
         audioPlaybackController.start(uri)
@@ -794,7 +789,6 @@ class MainActivity : Activity() {
         stopAudioPlayback()
         closeVideoFullscreen(restoreInline = false)
         playerArtworkPlaceholder.visibility = View.GONE
-        playerVideoView.visibility = View.GONE
         media3PlayerVideoView.visibility = View.VISIBLE
         activeVideoMode = ActiveVideoMode.INLINE
         prepareInlineVideo(uri = uri, positionMs = 0, playWhenReady = true, onError = {
@@ -810,8 +804,6 @@ class MainActivity : Activity() {
     ) {
         stopFullscreenVideoPlayback()
         activeVideoMode = ActiveVideoMode.INLINE
-        playerVideoView.visibility = View.GONE
-        videoFullscreenView.visibility = View.GONE
         media3VideoFullscreenView.visibility = View.GONE
         media3VideoPlaybackController.detach(media3VideoFullscreenView)
         media3PlayerVideoView.visibility = View.VISIBLE
@@ -848,7 +840,7 @@ class MainActivity : Activity() {
         return inlineFullscreenVisible &&
             playerCategory == PlayerCategory.VIDEO &&
             currentPlayerIndex >= 0 &&
-            playerVideoView.visibility == View.VISIBLE &&
+            media3PlayerVideoView.visibility == View.VISIBLE &&
             !isVideoFullscreenOpen()
     }
 
@@ -936,7 +928,7 @@ class MainActivity : Activity() {
             )
             playerControlsController.resetInlineProgress(getString(R.string.player_time_zero))
             playerArtworkPlaceholder.visibility = View.VISIBLE
-            playerVideoView.visibility = View.GONE
+            media3PlayerVideoView.visibility = View.GONE
             inlineFullscreenVisible = false
             updatePlayerCategoryUi()
         }
@@ -954,8 +946,6 @@ class MainActivity : Activity() {
         media3VideoPlaybackController.stop()
         media3VideoPlaybackController.detach(media3PlayerVideoView)
         media3VideoPlaybackController.detach(media3VideoFullscreenView)
-        playerVideoView.visibility = View.GONE
-        videoFullscreenView.visibility = View.GONE
         media3PlayerVideoView.visibility = View.GONE
         media3VideoFullscreenView.visibility = View.GONE
         if (activeVideoMode == ActiveVideoMode.INLINE || activeVideoMode == ActiveVideoMode.FULLSCREEN) {
@@ -966,7 +956,6 @@ class MainActivity : Activity() {
     private fun stopFullscreenVideoPlayback() {
         media3VideoPlaybackController.detach(media3VideoFullscreenView)
         media3VideoFullscreenView.visibility = View.GONE
-        videoFullscreenView.visibility = View.GONE
         fullscreenUserSeeking = false
         if (activeVideoMode == ActiveVideoMode.FULLSCREEN) {
             activeVideoMode = ActiveVideoMode.NONE
@@ -1180,7 +1169,6 @@ class MainActivity : Activity() {
         inlineFullscreenVisible = false
         media3VideoPlaybackController.detach(media3PlayerVideoView)
         media3PlayerVideoView.visibility = View.GONE
-        playerVideoView.visibility = View.GONE
         playerArtworkPlaceholder.visibility = View.VISIBLE
         playerControlsController.updateFullscreenProgress(
             progress = 0,
@@ -1191,7 +1179,6 @@ class MainActivity : Activity() {
         fullscreenOverlayController.show(download.fileName)
         fullscreenControlsController.showControls()
         activeVideoMode = ActiveVideoMode.FULLSCREEN
-        videoFullscreenView.visibility = View.GONE
         media3VideoFullscreenView.visibility = View.VISIBLE
         media3VideoPlaybackController.attach(media3VideoFullscreenView)
         if (wasPlaying) {
@@ -1209,7 +1196,6 @@ class MainActivity : Activity() {
         playbackHandler.removeCallbacksAndMessages(null)
         media3VideoPlaybackController.detach(media3VideoFullscreenView)
         media3VideoFullscreenView.visibility = View.GONE
-        videoFullscreenView.visibility = View.GONE
         fullscreenOverlayController.hide()
         fullscreenControlsController.clearCallbacks()
         fullscreenChromeController.exitFullscreen()
@@ -1222,7 +1208,6 @@ class MainActivity : Activity() {
                 return
             }
             playerArtworkPlaceholder.visibility = View.GONE
-            playerVideoView.visibility = View.GONE
             media3PlayerVideoView.visibility = View.VISIBLE
             activeVideoMode = ActiveVideoMode.INLINE
             media3VideoPlaybackController.attach(media3PlayerVideoView)

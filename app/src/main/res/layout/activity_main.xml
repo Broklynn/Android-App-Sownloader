@@ -800,21 +800,23 @@
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
-                        <com.androiddownload.ui.player.AspectRatioVideoView
-                            android:id="@+id/playerVideoView"
+                        <com.androiddownload.ui.player.RoundedClipFrameLayout
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:layout_gravity="center"
-                            android:visibility="gone" />
+                            android:clipChildren="true"
+                            android:clipToPadding="true">
 
-                        <androidx.media3.ui.PlayerView
-                            android:id="@+id/media3PlayerVideoView"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:layout_gravity="center"
-                            android:visibility="gone"
-                            app:resize_mode="fit"
-                            app:use_controller="false" />
+                            <androidx.media3.ui.PlayerView
+                                android:id="@+id/media3PlayerVideoView"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:layout_gravity="center"
+                                android:visibility="gone"
+                                app:resize_mode="fit"
+                                app:surface_type="texture_view"
+                                app:use_controller="false" />
+                        </com.androiddownload.ui.player.RoundedClipFrameLayout>
 
                         <ImageButton
                             android:id="@+id/playerFullscreenButton"
@@ -1382,12 +1384,6 @@
         android:layout_height="match_parent"
         android:background="@android:color/black"
         android:visibility="gone">
-
-        <com.androiddownload.ui.player.AspectRatioVideoView
-            android:id="@+id/videoFullscreenView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_gravity="center" />
 
         <androidx.media3.ui.PlayerView
             android:id="@+id/media3VideoFullscreenView"
