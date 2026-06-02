@@ -24,11 +24,13 @@ Hoje o player usa:
 - `onDestroy` liberando player;
 - back navigation fechando fullscreen antes de settings ou saida.
 
-`InlineVideoPlaybackController`, `FullscreenVideoPlaybackController`, `playerVideoView` e `videoFullscreenView` ainda permanecem no projeto/XML como fallback/rollback temporario. Eles nao sao o runtime de video ativo no estado atual.
+O runtime antigo baseado em `VideoView` foi removido. `AspectRatioVideoView`, `InlineVideoPlaybackController`, `FullscreenVideoPlaybackController`, `playerVideoView` e `videoFullscreenView` nao permanecem mais no projeto como runtime ou fallback ativo.
 
 A causa estrutural anterior era a existencia de dois `VideoView` separados: inline e fullscreen. A troca precisava parar/preparar runtimes distintos, o que abriu margem para duplicacao de audio, callbacks assincronos antigos e limitacoes de seek/keyframe do `VideoView`.
 
 Com Media3, inline e fullscreen compartilham a mesma instancia `ExoPlayer`. A Activity alterna apenas a superficie visual entre `media3PlayerVideoView` e `media3VideoFullscreenView`, preservando posicao, estado play/pause e progresso.
+
+O recorte visual inline e feito por `RoundedClipFrameLayout`, que limita o desenho do `PlayerView` Media3 dentro do container visual sem conhecer Media3, fullscreen ou runtime de playback.
 
 Validacao manual pos-migracao confirmou:
 
@@ -43,6 +45,8 @@ Validacao manual pos-migracao confirmou:
 - Back fecha fullscreen corretamente;
 - sair/voltar do app nao duplica audio;
 - MP3 smoke test passou.
+
+Auditoria pos-remocao confirmou busca zerada para referencias antigas a `AspectRatioVideoView`, `InlineVideoPlaybackController`, `FullscreenVideoPlaybackController`, `playerVideoView`, `videoFullscreenView`, `setVideoURI`, `setVideoSize`, `stopPlayback` e `suspend()`.
 
 ## Responsabilidades Atuais
 
@@ -68,8 +72,7 @@ Responsabilidades que ainda vivem na `MainActivity`:
 Estes componentes ja estao extraidos e devem ser preservados durante o milestone:
 
 - `AudioPlaybackController`;
-- `InlineVideoPlaybackController`;
-- `FullscreenVideoPlaybackController`;
+- `Media3VideoPlaybackController`;
 - `FullscreenControlsController`;
 - `FullscreenChromeController`;
 - `FullscreenSeekController`;
@@ -84,11 +87,12 @@ Estes componentes ja estao extraidos e devem ser preservados durante o milestone
 - `PlayerControlsStateResolver`;
 - `PlayerAdjacentNavigator`;
 - `PlayerCompletionResolver`;
-- `PlayerPlaybackFailureResolver`.
+- `PlayerPlaybackFailureResolver`;
+- `RoundedClipFrameLayout`.
 
 Eles devem continuar sendo usados como pecas de UI/regras puras. O milestone do player nao deve reimplementar essas responsabilidades dentro de uma engine.
 
-Os quatro controllers reais ja extraidos nao devem conhecer sessao/lista/categoria, `DownloadEntity`, back navigation, orientacao, system UI ou decisoes de skip/next/stop. Eventos continuam voltando para a `MainActivity` por callbacks.
+Controllers de runtime e UI ja extraidos nao devem conhecer sessao/lista/categoria, `DownloadEntity`, back navigation, orientacao, system UI ou decisoes de skip/next/stop. Eventos continuam voltando para a `MainActivity` por callbacks.
 
 ## Decisoes Arquiteturais Atuais
 
@@ -96,12 +100,14 @@ Os quatro controllers reais ja extraidos nao devem conhecer sessao/lista/categor
 - Media3/ExoPlayer ja e o runtime ativo de video por meio de `Media3VideoPlaybackController`.
 - Manter uma unica instancia `ExoPlayer` para inline e fullscreen.
 - Usar `media3PlayerVideoView` e `media3VideoFullscreenView` apenas como superficies visuais alternadas.
-- Manter `InlineVideoPlaybackController`, `FullscreenVideoPlaybackController` e os `VideoView` antigos como fallback/rollback temporario.
-- Nao remover runtime `VideoView` antigo ainda nesta etapa.
-- Nao criar camada comum entre `AudioPlaybackController`, `InlineVideoPlaybackController` e `FullscreenVideoPlaybackController` sem ganho claro. A duplicacao atual e pequena e mais segura que uma abstracao prematura.
+- O runtime antigo `VideoView` ja foi removido; rollback agora deve ser feito por Git, nao por fallback ativo no codigo.
+- Nao reintroduzir `VideoView`, `AspectRatioVideoView`, `InlineVideoPlaybackController` ou `FullscreenVideoPlaybackController`.
+- Nao expandir `Media3VideoPlaybackController` alem do limite atual de 150 linhas sem dividir responsabilidades.
+- `MainActivity` ainda e grande, com 1515 linhas, mas atua como coordinator principal de sessao/lista/categoria, fullscreen, progresso, seekbars, erros, skip/completion e lifecycle.
+- Nao criar camada comum entre `AudioPlaybackController` e `Media3VideoPlaybackController` sem ganho claro. A duplicacao atual e pequena e mais segura que uma abstracao prematura.
 - Nao mover o fullscreen coordinator completo ainda. Back navigation, orientacao, system UI, overlay lifecycle e restore inline continuam sensiveis e devem ser tratados em recorte proprio.
 - Nao recriar `FullscreenCoordinator`. A tentativa anterior causou regressao de lifecycle/audio duplicado e a arquitetura atual validada nao precisa desse coordinator.
-- O proximo recorte deve ser escolhido com cuidado, porque o runtime de video ja mudou e precisa de estabilizacao antes de nova remocao.
+- O proximo recorte deve ser escolhido com cuidado e ter objetivo especifico. Nao mexer no runtime Media3 sem validacao manual forte.
 
 ## Decisao Sobre FullscreenCoordinator
 
@@ -124,9 +130,9 @@ Qualquer tentativa futura deve comecar por design e validacao de lifecycle, nao 
 - Back;
 - confirmar que nao ha audio duplicado.
 
-## Correcao De Duplicacao Inline/Fullscreen
+## Correcao Historica De Duplicacao Inline/Fullscreen
 
-O bug de audio duplicado entre video inline e fullscreen foi corrigido mantendo a arquitetura com controllers separados.
+Antes da migracao Media3, o bug de audio duplicado entre video inline e fullscreen foi corrigido mantendo a arquitetura com controllers separados.
 
 Causa provavel corrigida: callbacks assincronos antigos de `VideoView` podiam disparar depois de `stop()`. Isso podia marcar controllers antigos como `prepared` e iniciar playback mesmo apos a troca de modo. `InlineVideoPlaybackController` e `FullscreenVideoPlaybackController` passaram a usar geracao de playback:
 
@@ -141,7 +147,7 @@ Validacao manual confirmou que:
 - pausar nao deixa audio em fundo;
 - a troca inline/fullscreen preserva o comportamento principal.
 
-`FullscreenCoordinator` continua nao recomendado neste momento. O estado estavel e manter fullscreen dividido em controllers pequenos por responsabilidade.
+Depois da migracao validada para Media3, esse runtime antigo foi removido. `FullscreenCoordinator` continua nao recomendado neste momento. O estado estavel e manter fullscreen dividido em controllers pequenos por responsabilidade.
 
 ## Limitacao Historica De Seek No VideoView
 
@@ -153,13 +159,14 @@ Nao corrigir esse tipo de problema com compensacao manual, como somar alguns seg
 
 ## Proximas Opcoes Possiveis
 
-- Estabilizar a migracao Media3 antes de novos recortes.
-- Medir arquivos e pontos de acoplamento depois de algumas validacoes reais.
-- Remover o runtime `VideoView` antigo em fase separada, se tudo continuar validado.
+- Pausar refatoracao de runtime de video depois da remocao completa do `VideoView`.
+- Manter a arquitetura atual sob validacao manual real antes de qualquer novo recorte.
 - Investigar camada comum entre controllers apenas se aparecer duplicacao real e repetida que reduza risco ao ser extraida.
 - Investigar reducao adicional da `MainActivity` como coordinator, priorizando limites de session/lista/categoria ou now playing/progresso.
+- Qualquer proxima refatoracao deve ter recorte novo, pequeno e especifico.
 - Nao recriar `FullscreenCoordinator`.
-- Nao remover `VideoView`/controllers antigos ainda nesta etapa.
+- Nao reintroduzir `VideoView`.
+- Nao mexer no runtime Media3 sem validacao manual forte.
 
 ## Checkpoint De Micro-Refatoracoes
 
@@ -179,7 +186,7 @@ As micro-refatoracoes seguras no player atual chegaram ao limite util.
 Problemas principais:
 
 - engine e UI estao misturadas na `MainActivity`;
-- video inline e fullscreen dependem de duas instancias visuais separadas;
+- video inline e fullscreen dependem de duas superficies visuais Media3 separadas, coordenadas pela `MainActivity`;
 - fullscreen ainda esta acoplado ao estado da session, ao chrome visual, a orientacao e ao restore inline;
 - back navigation conhece diretamente o fullscreen;
 - progresso geral e now playing continuam coordenados pela Activity;
@@ -187,7 +194,7 @@ Problemas principais:
 - timer de progresso geral fica dentro da Activity;
 - `currentPlayerIndex`, `playerItems` e `playerCategory` estao misturados com engine, UI e navegacao.
 
-Consequencia: uma troca direta para Media3/ExoPlayer tende a tocar UI, fullscreen, lifecycle, erro/completion e navegacao ao mesmo tempo.
+Consequencia: qualquer novo recorte de runtime ou fullscreen ainda tende a tocar UI, fullscreen, lifecycle, erro/completion e navegacao ao mesmo tempo.
 
 ## Interface Simples Insuficiente
 
@@ -324,7 +331,9 @@ No primeiro recorte, fullscreen deve permanecer na `MainActivity` ou em coordena
 
 Fullscreen, back navigation e controles fullscreen nao sao responsabilidades da engine. A engine deve ficar limitada a comandos, eventos, estado e leitura de posicao/duracao.
 
-## Fases Seguras Do Milestone
+## Fases Historicas Do Milestone
+
+As fases abaixo registram o caminho de design usado durante a migracao. O estado final atual e Media3/ExoPlayer como runtime unico de video, sem fallback ativo baseado em `VideoView`.
 
 ### Fase 0: documentacao/design
 
@@ -391,13 +400,15 @@ Concluida para o runtime de video:
 - inline e fullscreen compartilham uma unica instancia `ExoPlayer`;
 - `media3PlayerVideoView` e `media3VideoFullscreenView` alternam a superficie visual;
 - fullscreen, progresso, seekbar, double tap seek, Back e lifecycle basico foram validados manualmente;
-- rollback temporario ainda existe porque `VideoView` e controllers antigos permanecem no projeto/XML.
+- o runtime antigo `VideoView` foi removido depois da validacao;
+- rollback agora deve ser feito por Git, nao por fallback ativo no codigo.
 
 ## Restricoes
 
 - Nao trocar engine direto sem fase pequena, validacao e rollback claro.
 - Nao criar outro runtime Media3 paralelo.
-- Nao remover o runtime `VideoView` antigo junto com a fase de estabilizacao Media3.
+- Nao reintroduzir o runtime `VideoView` antigo.
+- Nao expandir `Media3VideoPlaybackController` alem do limite atual de 150 linhas sem dividir responsabilidades.
 - Nao alterar UI visual junto com engine.
 - Nao alterar XML/UI junto com a primeira engine.
 - Nao alterar XML/Gradle junto com controller.
