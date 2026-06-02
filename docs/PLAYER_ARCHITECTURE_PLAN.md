@@ -2,37 +2,47 @@
 
 ## Objetivo
 
-Este documento registra o design tecnico do milestone de player do DarkWave.
+Este documento registra o design tecnico e o estado atual do milestone de player do DarkWave.
 
-Ele nao implementa engine, nao adiciona Media3/ExoPlayer e nao muda runtime. A funcao deste plano e definir limites entre UI do player, sessao de playback e engine antes de qualquer extracao ou troca de tecnologia.
+Ele documenta a migracao validada do runtime de video para Media3/ExoPlayer e mantem os limites entre UI do player, sessao de playback e runtime. Mudancas futuras devem continuar pequenas, reversiveis e validadas manualmente quando tocarem playback visivel.
 
-## Estado Atual Pos-Controllers
+## Estado Atual Pos-Migracao Media3
 
-A `MainActivity` continua sendo a coordinator/orquestradora do player real, mas o runtime direto de playback e parte dos controles fullscreen ja foram extraidos para controllers pequenos.
+A `MainActivity` continua sendo a coordinator/orquestradora do player real, mas o runtime direto de video agora e `Media3VideoPlaybackController`, baseado em Media3/ExoPlayer.
 
 Hoje o player usa:
 
 - `AudioPlaybackController` para controlar o runtime de audio com `MediaPlayer`;
-- `InlineVideoPlaybackController` para controlar o runtime do video inline em `playerVideoView`;
-- `FullscreenVideoPlaybackController` para controlar o runtime do video fullscreen em `videoFullscreenView`;
+- `Media3VideoPlaybackController` como runtime ativo de video;
+- uma unica instancia `ExoPlayer` para video inline e fullscreen;
+- `media3PlayerVideoView` como superficie visual inline;
+- `media3VideoFullscreenView` como superficie visual fullscreen;
+- troca inline/fullscreen por attach/detach do mesmo player nos `PlayerView` Media3, sem criar segundo player e sem reiniciar playback;
 - `FullscreenControlsController` para controlar a UI dos controles fullscreen: mostrar/ocultar, auto-hide, feedback de seek e callbacks de play/pause e fechar;
-- `AspectRatioVideoView`, baseado em `VideoView`, para video inline e fullscreen;
-- troca inline/fullscreen recriando playback no outro `VideoView` e preservando posicao;
 - `Handler` para progresso geral e auto-hide de controles inline;
 - `onPause` e `onStop` pausando playback;
 - `onDestroy` liberando player;
 - back navigation fechando fullscreen antes de settings ou saida.
 
-O fullscreen atual nao compartilha a mesma instancia visual do video inline. Nao ha movimentacao real de surface ou target visual entre inline e fullscreen. Ao abrir fullscreen, a Activity captura posicao e estado de play, para o inline e prepara o `videoFullscreenView`. Ao fechar fullscreen com restore, captura posicao e estado de play, para o fullscreen e prepara novamente o inline.
+`InlineVideoPlaybackController`, `FullscreenVideoPlaybackController`, `playerVideoView` e `videoFullscreenView` ainda permanecem no projeto/XML como fallback/rollback temporario. Eles nao sao o runtime de video ativo no estado atual.
 
-O aspect ratio do video e tratado por `AspectRatioVideoView`, que mede o conteudo com base no tamanho informado pelo `MediaPlayer`/`VideoView` preparado. Essa responsabilidade e visual e nao deve entrar no contrato puro da engine.
+A causa estrutural anterior era a existencia de dois `VideoView` separados: inline e fullscreen. A troca precisava parar/preparar runtimes distintos, o que abriu margem para duplicacao de audio, callbacks assincronos antigos e limitacoes de seek/keyframe do `VideoView`.
 
-Validacoes recentes confirmaram:
+Com Media3, inline e fullscreen compartilham a mesma instancia `ExoPlayer`. A Activity alterna apenas a superficie visual entre `media3PlayerVideoView` e `media3VideoFullscreenView`, preservando posicao, estado play/pause e progresso.
 
-- MP3 iniciou, pausou/retomou e seek funcionou;
-- MP4 inline iniciou, pausou/retomou e seek funcionou;
-- fullscreen abriu, reproduziu, pausou/retomou, double tap seek funcionou, seekbar funcionou, fechou restaurando inline e Back fechou fullscreen;
-- controles fullscreen, auto-hide e feedback de seek foram validados.
+Validacao manual pos-migracao confirmou:
+
+- MP4 inline toca normalmente;
+- fullscreen abre normalmente;
+- inline/fullscreen usam uma unica instancia `ExoPlayer` via `Media3VideoPlaybackController`;
+- nao ha audio duplicado;
+- minutagem/progresso no fullscreen atualiza continuamente;
+- seekbar fullscreen funciona;
+- double tap seek funciona;
+- fechar fullscreen volta para inline corretamente;
+- Back fecha fullscreen corretamente;
+- sair/voltar do app nao duplica audio;
+- MP3 smoke test passou.
 
 ## Responsabilidades Atuais
 
@@ -83,10 +93,15 @@ Os quatro controllers reais ja extraidos nao devem conhecer sessao/lista/categor
 ## Decisoes Arquiteturais Atuais
 
 - Nao criar `InternalPlayerEngine` ainda. A fronteira entre controllers atuais, session, target visual e engine ainda nao esta clara o bastante.
-- Nao adicionar Media3/ExoPlayer ainda. A engine atual deve continuar preservada ate existir contrato claro e validado.
+- Media3/ExoPlayer ja e o runtime ativo de video por meio de `Media3VideoPlaybackController`.
+- Manter uma unica instancia `ExoPlayer` para inline e fullscreen.
+- Usar `media3PlayerVideoView` e `media3VideoFullscreenView` apenas como superficies visuais alternadas.
+- Manter `InlineVideoPlaybackController`, `FullscreenVideoPlaybackController` e os `VideoView` antigos como fallback/rollback temporario.
+- Nao remover runtime `VideoView` antigo ainda nesta etapa.
 - Nao criar camada comum entre `AudioPlaybackController`, `InlineVideoPlaybackController` e `FullscreenVideoPlaybackController` sem ganho claro. A duplicacao atual e pequena e mais segura que uma abstracao prematura.
 - Nao mover o fullscreen coordinator completo ainda. Back navigation, orientacao, system UI, overlay lifecycle e restore inline continuam sensiveis e devem ser tratados em recorte proprio.
-- O proximo recorte deve ser escolhido com cuidado, porque o runtime principal de playback e os controles fullscreen ja sairam da `MainActivity`.
+- Nao recriar `FullscreenCoordinator`. A tentativa anterior causou regressao de lifecycle/audio duplicado e a arquitetura atual validada nao precisa desse coordinator.
+- O proximo recorte deve ser escolhido com cuidado, porque o runtime de video ja mudou e precisa de estabilizacao antes de nova remocao.
 
 ## Decisao Sobre FullscreenCoordinator
 
@@ -128,20 +143,23 @@ Validacao manual confirmou que:
 
 `FullscreenCoordinator` continua nao recomendado neste momento. O estado estavel e manter fullscreen dividido em controllers pequenos por responsabilidade.
 
-## Limitacao Conhecida De Seek
+## Limitacao Historica De Seek No VideoView
 
-Ao alternar entre vertical/inline e fullscreen, a posicao pode voltar cerca de 2 segundos. Isso provavelmente vem do comportamento de seek/keyframe do `VideoView`/`MediaPlayer`; o atraso varia por video e pelos keyframes disponiveis.
+Antes da migracao, ao alternar entre vertical/inline e fullscreen, a posicao podia voltar cerca de 2 segundos. Isso provavelmente vinha do comportamento de seek/keyframe do `VideoView`/`MediaPlayer`; o atraso variava por video e pelos keyframes disponiveis.
 
-Nao corrigir isso com compensacao manual, como somar alguns segundos na posicao. Essa abordagem tende a quebrar videos diferentes, keyframes diferentes e fluxos pausados.
+Essa limitacao deixou de ser o caminho principal porque o runtime ativo de video passou a ser Media3/ExoPlayer com uma unica instancia de player e troca de `PlayerView` entre inline/fullscreen.
 
-A solucao estrutural futura para posicao mais precisa e uma migracao planejada para Media3/ExoPlayer com uma unica instancia de player e troca de `PlayerView` entre inline/fullscreen.
+Nao corrigir esse tipo de problema com compensacao manual, como somar alguns segundos na posicao. Essa abordagem tende a quebrar videos diferentes, keyframes diferentes e fluxos pausados.
 
 ## Proximas Opcoes Possiveis
 
-- Investigar um fullscreen coordinator completo apenas em etapa futura de design/teste de lifecycle, somente se o escopo conseguir separar claramente overlay, restore inline, back navigation, foreground/background e chrome.
-- Investigar camada comum entre controllers, apenas se aparecer duplicacao real e repetida que reduza risco ao ser extraida.
+- Estabilizar a migracao Media3 antes de novos recortes.
+- Medir arquivos e pontos de acoplamento depois de algumas validacoes reais.
+- Remover o runtime `VideoView` antigo em fase separada, se tudo continuar validado.
+- Investigar camada comum entre controllers apenas se aparecer duplicacao real e repetida que reduza risco ao ser extraida.
 - Investigar reducao adicional da `MainActivity` como coordinator, priorizando limites de session/lista/categoria ou now playing/progresso.
-- Pausar refatoracoes de player e estabilizar, caso o proximo recorte misture responsabilidades demais.
+- Nao recriar `FullscreenCoordinator`.
+- Nao remover `VideoView`/controllers antigos ainda nesta etapa.
 
 ## Checkpoint De Micro-Refatoracoes
 
@@ -153,7 +171,7 @@ As micro-refatoracoes seguras no player atual chegaram ao limite util.
 - Nao vale mexer agora em lifecycle, release ou `stopCurrentPlayback(...)`: a ordem atual de callbacks, fullscreen, release e UI deve continuar explicita.
 - `pauseCurrentPlayback()` nao deve usar `activePlaybackSource()`, porque pausa audio independentemente de `playerCategory` quando `audioPlayer` esta tocando.
 - A proxima fase nao deve ser outra micro-refatoracao; deve ser um recorte maior e explicito de runtime/controller/engine, com validacao manual completa.
-- Nao criar Media3/ExoPlayer ainda.
+- Media3/ExoPlayer ja foi criado e validado como runtime ativo de video; nao recriar esse runtime em outro controller.
 - Nao criar `PlayerVideoTarget` ou `InternalPlayerEngine` sem recorte definido.
 
 ## Acoplamentos Atuais
@@ -365,21 +383,21 @@ Fullscreen pode continuar temporariamente fora do contrato se isso reduzir risco
 
 Validar que a engine atual atras do contrato nao mudou comportamento.
 
-### Fase 7: avaliar Media3/ExoPlayer
+### Fase 7: Media3/ExoPlayer de video
 
-Somente depois do contrato e da engine atual estabilizados:
+Concluida para o runtime de video:
 
-- comparar Media3/ExoPlayer contra o contrato;
-- avaliar dependencia Gradle;
-- avaliar migracao de video target;
-- avaliar fullscreen;
-- planejar rollback.
+- Media3/ExoPlayer foi conectado por `Media3VideoPlaybackController`;
+- inline e fullscreen compartilham uma unica instancia `ExoPlayer`;
+- `media3PlayerVideoView` e `media3VideoFullscreenView` alternam a superficie visual;
+- fullscreen, progresso, seekbar, double tap seek, Back e lifecycle basico foram validados manualmente;
+- rollback temporario ainda existe porque `VideoView` e controllers antigos permanecem no projeto/XML.
 
 ## Restricoes
 
-- Nao trocar engine direto.
-- Nao adicionar Media3/ExoPlayer antes do contrato.
-- Nao adicionar Media3 antes de contrato claro.
+- Nao trocar engine direto sem fase pequena, validacao e rollback claro.
+- Nao criar outro runtime Media3 paralelo.
+- Nao remover o runtime `VideoView` antigo junto com a fase de estabilizacao Media3.
 - Nao alterar UI visual junto com engine.
 - Nao alterar XML/UI junto com a primeira engine.
 - Nao alterar XML/Gradle junto com controller.
