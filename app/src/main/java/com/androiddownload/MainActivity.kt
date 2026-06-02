@@ -2,8 +2,6 @@ package com.androiddownload
 
 import android.Manifest
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -225,7 +223,6 @@ class MainActivity : Activity() {
             statusLabelProvider = downloadTextProvider::statusLabel,
             formatLabelProvider = downloadTextProvider::formatLabel,
             progressLabelProvider = downloadTextProvider::progressLabelForDetails,
-            onCopyUrl = ::copyDownloadUrl,
             onOpen = ::openDownload,
             onShare = { download -> fileActionsController.share(download) }
         )
@@ -1221,14 +1218,6 @@ class MainActivity : Activity() {
 
     private fun showDownloadDetailsDialog(download: DownloadEntity) {
         downloadDetailsDialogController.show(download)
-    }
-
-    private fun copyDownloadUrl(download: DownloadEntity) {
-        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(
-            ClipData.newPlainText(getString(R.string.details_copy_url), download.sourceUrl)
-        )
-        showToast(getString(R.string.url_copied))
     }
 
     private fun openDownload(download: DownloadEntity) {

@@ -1,6 +1,9 @@
 package com.androiddownload.ui.downloads
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import com.androiddownload.R
 import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
@@ -12,7 +15,6 @@ class DownloadDetailsDialogController(
     private val statusLabelProvider: (DownloadStatus) -> String,
     private val formatLabelProvider: (DownloadEntity) -> String,
     private val progressLabelProvider: (DownloadEntity) -> String,
-    private val onCopyUrl: (DownloadEntity) -> Unit,
     private val onOpen: (DownloadEntity) -> Unit,
     private val onShare: (DownloadEntity) -> Unit
 ) {
@@ -27,7 +29,7 @@ class DownloadDetailsDialogController(
         val buttons = mutableListOf(
             DarkDialogButton(activity.getString(R.string.details_close)),
             DarkDialogButton(activity.getString(R.string.details_copy_url), primary = true) {
-                onCopyUrl(download)
+                copyUrl(download)
             }
         )
         if (download.status == DownloadStatus.COMPLETED) {
@@ -49,5 +51,13 @@ class DownloadDetailsDialogController(
             contentView = contentView,
             buttons = buttons
         )
+    }
+
+    private fun copyUrl(download: DownloadEntity) {
+        val clipboard = activity.getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(activity.getString(R.string.details_copy_url), download.sourceUrl)
+        )
+        Toast.makeText(activity, activity.getString(R.string.url_copied), Toast.LENGTH_SHORT).show()
     }
 }
