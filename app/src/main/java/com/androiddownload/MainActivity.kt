@@ -327,6 +327,8 @@ class MainActivity : Activity() {
         downloadsTabButton = findViewById(R.id.downloadsTabButton)
         playerTabButton = findViewById(R.id.playerTabButton)
         mainNavigationController = MainNavigationController(
+            appHeader = appHeader,
+            mainTabBar = mainTabBar,
             homeContainer = homeContainer,
             downloadsContainer = downloadsContainer,
             playerContainer = playerContainer,
@@ -585,8 +587,6 @@ class MainActivity : Activity() {
     private fun showHome() {
         currentScreen = PrimaryScreen.HOME
         downloadsController.hideSearch(clearQuery = true)
-        appHeader.visibility = View.VISIBLE
-        mainTabBar.visibility = View.VISIBLE
         mainNavigationController.showPrimaryScreen(PrimaryScreen.HOME)
         settingsController.hide()
         renderHomeRecentDownloads()
@@ -595,8 +595,6 @@ class MainActivity : Activity() {
 
     private fun showDownloads() {
         currentScreen = PrimaryScreen.DOWNLOADS
-        appHeader.visibility = View.VISIBLE
-        mainTabBar.visibility = View.VISIBLE
         mainNavigationController.showPrimaryScreen(PrimaryScreen.DOWNLOADS)
         settingsController.hide()
         downloadsController.setFilter(DownloadsFilter.ALL, refreshOnly = true)
@@ -1295,8 +1293,6 @@ class MainActivity : Activity() {
     private fun showPlayer() {
         currentScreen = PrimaryScreen.PLAYER
         downloadsController.hideSearch(clearQuery = true)
-        appHeader.visibility = View.VISIBLE
-        mainTabBar.visibility = View.VISIBLE
         mainNavigationController.showPrimaryScreen(PrimaryScreen.PLAYER)
         settingsController.hide()
         renderPlayerList()
@@ -1304,16 +1300,11 @@ class MainActivity : Activity() {
 
     private fun showSettings(scrollToDownloadLocation: Boolean = false) {
         downloadsController.hideSearch(clearQuery = false)
-        appHeader.visibility = View.GONE
-        mainTabBar.visibility = View.GONE
-        homeContainer.visibility = View.GONE
-        playerContainer.visibility = View.GONE
-        downloadsContainer.visibility = View.GONE
+        mainNavigationController.showSettings()
         updateDefaultQualityText()
         downloadLocationController.updateDownloadLocationText()
         ytDlpUpdateController.updateUiState()
         ytDlpUpdateController.updateAutoUpdateUiState()
-        updateSelectedTab(null)
         settingsController.show(scrollToDownloadLocation)
     }
 
@@ -1356,16 +1347,6 @@ class MainActivity : Activity() {
             return true
         }
         return false
-    }
-
-    private fun updateSelectedTab(selectedTab: Button?) {
-        listOf(homeTabButton, downloadsTabButton, playerTabButton).forEach { tab ->
-            val isSelected = tab == selectedTab
-            tab.isSelected = isSelected
-            tab.setBackgroundResource(
-                if (isSelected) R.drawable.bg_tab_selected else R.drawable.bg_tab_unselected
-            )
-        }
     }
 
     private fun handleIntent(intent: Intent?) {

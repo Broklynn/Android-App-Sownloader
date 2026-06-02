@@ -4,6 +4,8 @@ import android.view.View
 import com.androiddownload.R
 
 class MainNavigationController(
+    private val appHeader: View,
+    private val mainTabBar: View,
     private val homeContainer: View,
     private val downloadsContainer: View,
     private val playerContainer: View,
@@ -12,6 +14,8 @@ class MainNavigationController(
     private val playerTabButton: View
 ) {
     fun showPrimaryScreen(screen: PrimaryScreen) {
+        appHeader.visibility = View.VISIBLE
+        mainTabBar.visibility = View.VISIBLE
         homeContainer.visibility = if (screen == PrimaryScreen.HOME) View.VISIBLE else View.GONE
         downloadsContainer.visibility = if (screen == PrimaryScreen.DOWNLOADS) View.VISIBLE else View.GONE
         playerContainer.visibility = if (screen == PrimaryScreen.PLAYER) View.VISIBLE else View.GONE
@@ -25,7 +29,16 @@ class MainNavigationController(
         )
     }
 
-    private fun updateSelectedTab(selectedTab: View) {
+    fun showSettings() {
+        appHeader.visibility = View.GONE
+        mainTabBar.visibility = View.GONE
+        homeContainer.visibility = View.GONE
+        downloadsContainer.visibility = View.GONE
+        playerContainer.visibility = View.GONE
+        updateSelectedTab(null)
+    }
+
+    private fun updateSelectedTab(selectedTab: View?) {
         listOf(homeTabButton, downloadsTabButton, playerTabButton).forEach { tab ->
             val isSelected = tab == selectedTab
             tab.isSelected = isSelected
