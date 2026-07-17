@@ -107,6 +107,44 @@ Motivo:
 
 YouTube mantém selectors próprios.
 
+## MP4 carro e compatibilidade com centrais multimídia
+
+Decisão: oferecer o preset explícito `MP4 carro - 720p`, identificado internamente pelo selector semântico `car-compatible:720p`.
+
+Causa provável do problema original:
+
+- a incompatibilidade estava no formato real do vídeo, não apenas na resolução 1080p;
+- um arquivo MP4 pode conter AV1, VP9, H.264 ou outros codecs e perfis;
+- algumas centrais multimídia aceitam o contêiner MP4, mas não todos os codecs, perfis, pixel formats ou taxas de quadros possíveis.
+
+Decisão de compatibilidade:
+
+- o MP4 normal continua seguindo os selectors atuais, sem transcodificação adicional;
+- o modo carro baixa primeiro um MP4 temporário de até 720p;
+- o pós-processamento é isolado em `DownloadMediaPostProcessor` e `CarCompatibilityTranscoder`;
+- a saída usa H.264/libx264 Constrained Baseline nível 3.1, até 1280x720, 30 FPS, `yuv420p`, AAC-LC em aproximadamente 192 kbps e `faststart`;
+- o arquivo convertido recebe o sufixo `- carro`;
+- o temporário original não é sobrescrito;
+- falha ou skip do FFmpeg retorna o arquivo original como fallback.
+
+Motivo:
+
+- usar um perfil conservador aumenta significativamente a chance de reprodução em centrais multimídia;
+- manter o selector semântico separado do selector real de download permite acionar o pós-processamento sem mudar os presets MP4 normais;
+- isolar a conversão evita espalhar lógica FFmpeg pelo fluxo de finalização;
+- o fallback preserva o download mesmo quando a conversão não pode ser concluída.
+
+Trade-offs:
+
+- a transcodificação leva mais tempo;
+- consome mais bateria e espaço temporário;
+- pode aquecer o aparelho;
+- vídeos longos ainda exigem validação específica de desempenho.
+
+Escopo preservado: MP3, presets MP4 normais, Room, player, fullscreen, `HttpDownloader`, fila, service e regras de subpastas não foram modificados pela implementação.
+
+O perfil foi validado em uma central multimídia real, mas não representa garantia de compatibilidade com todos os modelos.
+
 ## Clipboard
 
 Decisão: `ClipboardLinkPromptController` concentra launcher intent, leitura de clipboard, anti-spam da sessão e diálogo "Link copiado encontrado".

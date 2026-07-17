@@ -16,6 +16,7 @@ O DarkWave centraliza fluxos de download para uso pessoal:
 - detectar link copiado ao abrir o app pelo ícone;
 - receber links via Quick Share Android;
 - baixar mídia de YouTube, Instagram, TikTok e arquivos HTTP diretos;
+- oferecer o preset `MP4 carro - 720p` para gerar vídeos mais compatíveis com centrais multimídia;
 - gerenciar downloads com filtros;
 - abrir MP3/MP4 concluídos em player interno;
 - abrir arquivos não mídia em apps externos.
@@ -88,6 +89,9 @@ Componentes importantes no estado atual:
 - `DownloadForegroundService`: execução em foreground.
 - `HttpDownloader`: downloads HTTP diretos.
 - `YtDlpDownloader`: integração com `yt-dlp`, metadata, seleção de formatos, tentativas e progresso.
+- `VideoCompatibilityProfile`: descreve o perfil semântico conservador usado pelo modo carro.
+- `CarCompatibilityTranscoder`: executa a conversão FFmpeg para H.264/AAC sem sobrescrever o temporário original.
+- `DownloadMediaPostProcessor`: decide quando aplicar o perfil e retorna o arquivo convertido ou o original como fallback.
 - `DownloadDestinationResolver`: resolve destino de arquivo.
 - `DownloadOriginResolver`: classifica origem do download.
 - `DownloadDestinationSubfolderResolver`: define subpastas reais por origem.

@@ -41,7 +41,7 @@ O app recebe links compartilhados pelo Android.
 
 Comportamentos atuais:
 
-- YouTube via Quick Share abre `QuickDownloadSheet` com opções MP3/MP4.
+- YouTube via Quick Share abre `QuickDownloadSheet` com opções MP3/MP4, incluindo `MP4 carro - 720p`.
 - Instagram, Reels e carrossel via Quick Share abrem `MediaSelectionSheet`.
 - HTTP direto compartilhado não inicia download automaticamente.
 
@@ -57,6 +57,39 @@ Comportamentos atuais importantes:
 - TikTok usa auto-update de `yt-dlp` para erros conhecidos.
 - TikTok usa selector específico para MP4 vertical: `best[ext=mp4]/best`.
 - Instagram e fbcdn podem usar headers seguros preservados via `httpHeadersJson`.
+
+### MP4 carro - 720p
+
+O preset `MP4 carro - 720p` está funcional nos fluxos normais de seleção MP4 e no Quick Share do YouTube. O selector semântico persistido é `car-compatible:720p`.
+
+Fluxo atual:
+
+1. O `yt-dlp` baixa um MP4 temporário de até 720p.
+2. `DownloadMediaPostProcessor` identifica o perfil especial.
+3. `CarCompatibilityTranscoder` gera outro arquivo com FFmpeg.
+4. O arquivo convertido recebe o sufixo `- carro`.
+5. Se a conversão falhar ou for pulada, o arquivo temporário original é salvo como fallback.
+
+Perfil de saída:
+
+- contêiner MP4;
+- vídeo H.264/libx264, Constrained Baseline, nível 3.1;
+- resolução máxima 1280x720 e 30 FPS;
+- pixel format `yuv420p`;
+- áudio AAC-LC em aproximadamente 192 kbps;
+- `faststart`.
+
+O arquivo original temporário não é sobrescrito. MP3 e presets MP4 normais permanecem sem esse pós-processamento; um MP4 normal pode continuar usando AV1, VP9, H.264 ou outro formato escolhido pelo fluxo atual.
+
+Checkpoint:
+
+- commit `e1a62f43f4f5c413453f65c06e26327c40dee058` (`Add car-compatible MP4 download mode`);
+- `testDebugUnitTest`, `assembleDebug` e `installDebug` concluídos com sucesso;
+- validado no Android 16 físico `SM-M346B`;
+- arquivo convertido aberto no player interno Media3;
+- arquivo convertido reproduzido com sucesso em uma central multimídia real.
+
+O perfil aumenta significativamente a compatibilidade, mas não garante funcionamento em toda central multimídia.
 
 ### HttpDownloader
 
@@ -223,7 +256,8 @@ No estado documentado:
 - Home manual funciona.
 - Clipboard prompt preenche Home sem iniciar download.
 - Quick Share Android funciona para os fluxos principais.
-- YouTube via Quick Share abre sheet MP3/MP4.
+- YouTube via Quick Share abre sheet MP3/MP4, incluindo o modo carro.
+- `MP4 carro - 720p` baixa, transcodifica, usa o sufixo `- carro` e abre no player interno.
 - Instagram/Reels/carrossel abre seleção de mídia.
 - Instagram exibe thumbnails em grade de 2 colunas.
 - Instagram permite baixar selecionados ou todos.

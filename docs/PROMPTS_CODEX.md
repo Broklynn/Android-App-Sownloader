@@ -28,6 +28,7 @@ Prioridades atuais:
 - pausar micro-extracoes fora do player quando o ganho real for baixo;
 - preparar milestone proprio para player/arquitetura de player;
 - preservar Quick Share, Home, player, downloads e subpastas;
+- preservar o modo `MP4 carro - 720p`, seu pós-processamento isolado e o fallback para o arquivo original;
 - futuramente reduzir `YtDlpDownloader`;
 - manter testes/build funcionando.
 
@@ -231,6 +232,11 @@ Preservar:
 - TikTok com `best[ext=mp4]/best`;
 - auto-update de `yt-dlp` para erros conhecidos de TikTok;
 - Instagram/fbcdn com `httpHeadersJson` usando allowlist segura;
+- preset `MP4 carro - 720p` com selector semântico `car-compatible:720p`;
+- download temporário de até 720p antes da transcodificação;
+- `VideoCompatibilityProfile`, `CarCompatibilityTranscoder` e `DownloadMediaPostProcessor`;
+- MP4 normal e MP3 sem pós-processamento adicional;
+- fallback para o arquivo original quando o FFmpeg falhar ou pular a conversão;
 - ausência de cookies, login, Authorization, tokens e headers privados.
 
 ## Como responder depois de cada etapa

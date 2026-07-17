@@ -53,6 +53,15 @@ Observações conhecidas:
 - selectors próprios do YouTube devem ser preservados;
 - mudanças na plataforma podem quebrar metadata, formatos ou download.
 
+Compatibilidade com centrais multimídia:
+
+- o problema original de reprodução foi resolvido com o preset `MP4 carro - 720p`;
+- a causa provável era incompatibilidade do codec/perfil real dentro do MP4, não apenas resolução 1080p;
+- MP4 normal continua podendo usar AV1, VP9, H.264 ou outro formato escolhido pelo fluxo atual;
+- o perfil conservador do modo carro aumenta significativamente a compatibilidade, mas não garante reprodução em toda central;
+- vídeos longos ainda precisam de validação específica de tempo, bateria, aquecimento e espaço temporário;
+- se o FFmpeg falhar ou pular a conversão, o fallback salva o arquivo original, que pode não ter a mesma compatibilidade do perfil convertido.
+
 Não implementar mecanismos de bypass de DRM, login, conteúdo privado ou paywall.
 
 ## Android e permissões

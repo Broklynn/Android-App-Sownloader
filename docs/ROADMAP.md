@@ -16,6 +16,19 @@ Reduzir acoplamento e tamanho dos arquivos críticos sem quebrar fluxos existent
 - preservar UI visual e comportamento;
 - preparar o projeto para crescimento futuro.
 
+## Checkpoint concluído: MP4 carro - 720p
+
+O modo `MP4 carro - 720p` foi concluído no commit `e1a62f43f4f5c413453f65c06e26327c40dee058` e está disponível na seleção MP4 normal e no Quick Share do YouTube.
+
+O problema original foi resolvido e o arquivo convertido foi validado no Android 16 físico `SM-M346B`, no player interno Media3 e em uma central multimídia real.
+
+Pendências específicas:
+
+- validar desempenho com vídeos longos;
+- observar tempo de conversão, bateria, aquecimento e uso de espaço temporário;
+- manter fallback para o arquivo original quando o FFmpeg falhar ou pular a conversão;
+- não tratar o perfil como garantia universal de compatibilidade.
+
 ## Checkpoint pos-refatoracao da MainActivity
 
 A `MainActivity.kt` foi reduzida de aproximadamente 1900+ linhas para cerca de 1643 linhas.
@@ -82,6 +95,7 @@ Cuidados:
 - TikTok usa `best[ext=mp4]/best`.
 - Auto-update do `yt-dlp` foi ampliado para TikTok.
 - Instagram/fbcdn usa headers seguros via `httpHeadersJson`.
+- Preservar `car-compatible:720p`, o pós-processamento isolado e o fallback para o arquivo original.
 - Não adicionar cookies, login, Authorization, tokens ou headers privados.
 
 ## O que não fazer agora
