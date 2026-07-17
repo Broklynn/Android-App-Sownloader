@@ -144,6 +144,7 @@
     <string name="ytdlp_quality_mp4_1440p">MP4 - 1440p</string>
     <string name="ytdlp_quality_mp4_1080p">MP4 - 1080p</string>
     <string name="ytdlp_quality_mp4_720p">MP4 - 720p</string>
+    <string name="ytdlp_quality_mp4_car_720p">MP4 carro - 720p</string>
     <string name="ytdlp_quality_mp4_480p">MP4 - 480p</string>
     <string name="ytdlp_quality_mp3_320k">MP3 - 320k</string>
     <string name="ytdlp_quality_mp3_256k">MP3 - 256k</string>

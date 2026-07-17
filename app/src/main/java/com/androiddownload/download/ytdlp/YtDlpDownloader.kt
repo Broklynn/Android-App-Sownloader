@@ -12,6 +12,9 @@ import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.media.AndroidFfmpegCommandRunner
+import com.androiddownload.download.media.CarCompatibilityTranscoder
+import com.androiddownload.download.media.DownloadMediaPostProcessor
 import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -48,6 +51,9 @@ class YtDlpDownloader(
     private val progressUpdateIntervalMs = 1000L
     private val progressHeartbeatIntervalMs = 1000L
     private val executionMutex = Mutex()
+    private val mediaPostProcessor = DownloadMediaPostProcessor(
+        CarCompatibilityTranscoder(AndroidFfmpegCommandRunner(context))
+    )
 
     @Volatile
     private var initialized = false
@@ -856,16 +862,30 @@ class YtDlpDownloader(
                 outputFile.delete()
             }
         }
-        val fileBytes = validateFinalFile(
+        validateFinalFile(
             finalFile = preparedFinalFile,
             expectedMimeType = expectedMimeType
         )
+        val postProcessedFile = mediaPostProcessor.process(
+            inputFile = preparedFinalFile,
+            preferredName = finalName,
+            mimeType = expectedMimeType,
+            qualitySelector = current.qualitySelector
+        )
+        val fileToSave = postProcessedFile.file
+        val preferredNameToSave = postProcessedFile.preferredName
+        val mimeTypeToSave = postProcessedFile.mimeType
+        val fileBytes = validateFinalFile(
+            finalFile = fileToSave,
+            expectedMimeType = mimeTypeToSave
+        )
+        recordPostProcessingResult(current, postProcessedFile)
         val savedFile = try {
             DownloadDestinationResolver.saveToDestination(
                 context = context,
-                sourceFile = preparedFinalFile,
-                preferredName = finalName,
-                mimeType = expectedMimeType,
+                sourceFile = fileToSave,
+                preferredName = preferredNameToSave,
+                mimeType = mimeTypeToSave,
                 destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(latest)
             )
         } catch (exception: DownloadDestinationResolver.DestinationException) {
@@ -906,6 +926,35 @@ class YtDlpDownloader(
             error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${savedFile.fileName}; tamanho=${fileBytes}",
             durationMs = elapsedMs(finalizeStartedAt)
         )
+    }
+
+    private fun recordPostProcessingResult(
+        current: DownloadEntity,
+        result: DownloadMediaPostProcessor.Result
+    ) {
+        when (result) {
+            is DownloadMediaPostProcessor.Result.Original -> Unit
+            is DownloadMediaPostProcessor.Result.Processed -> {
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = current.qualitySelector.orEmpty(),
+                    attempt = "compatibilidade carro",
+                    result = "transcodificacao concluida",
+                    error = "${result.file.name}; tamanho=${result.file.length()}"
+                )
+            }
+            is DownloadMediaPostProcessor.Result.Fallback -> {
+                YtDlpDiagnostics.record(
+                    context = context,
+                    url = current.sourceUrl,
+                    option = current.qualitySelector.orEmpty(),
+                    attempt = "compatibilidade carro",
+                    result = "fallback para arquivo original",
+                    error = result.reason
+                )
+            }
+        }
     }
 
     private suspend fun handleFailure(

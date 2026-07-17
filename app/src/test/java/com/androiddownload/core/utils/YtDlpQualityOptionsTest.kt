@@ -49,6 +49,14 @@ class YtDlpQualityOptionsTest {
     }
 
     @Test
+    fun carCompatibleSelectorReturnsExpectedMp4Label() {
+        val label = labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P)
+
+        assertEquals("MP4 carro - 720p", label)
+        assertTrue("MP4" in label)
+    }
+
+    @Test
     fun allKnownMp3SelectorLabelsContainMp3() {
         val selectors = listOf(
             YtDlpQualityOptions.SELECTOR_MP3_320K,
@@ -70,6 +78,7 @@ class YtDlpQualityOptionsTest {
             YtDlpQualityOptions.SELECTOR_MP4_1440P,
             YtDlpQualityOptions.SELECTOR_MP4_1080P,
             YtDlpQualityOptions.SELECTOR_MP4_720P,
+            YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P,
             YtDlpQualityOptions.SELECTOR_MP4_480P
         )
 
@@ -78,6 +87,36 @@ class YtDlpQualityOptionsTest {
 
             assertTrue("MP4 label must remain distinguishable for player/router", "MP4" in label)
         }
+    }
+
+    @Test
+    fun normalMp4SelectorLabelsStayUnchanged() {
+        val labels = listOf(
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_1440P),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_1080P),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_720P),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_480P)
+        )
+
+        assertEquals(
+            listOf("MP4 - 1440p", "MP4 - 1080p", "MP4 - 720p", "MP4 - 480p"),
+            labels
+        )
+    }
+
+    @Test
+    fun mp3SelectorLabelsStayUnchanged() {
+        val labels = listOf(
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP3_320K),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP3_256K),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP3_192K),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP3_128K)
+        )
+
+        assertEquals(
+            listOf("MP3 - 320k", "MP3 - 256k", "MP3 - 192k", "MP3 - 128k"),
+            labels
+        )
     }
 
     @Test
@@ -102,6 +141,7 @@ class YtDlpQualityOptionsTest {
             labelFor(qualitySelector = null, sourceUrl = "https://example.com/file.mp4"),
             labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP3_128K),
             labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_480P),
+            labelFor(qualitySelector = YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P),
             labelFor(qualitySelector = "best"),
             labelFor(qualitySelector = "unknown-selector")
         )
@@ -129,6 +169,7 @@ class YtDlpQualityOptionsTest {
         mp4_1440p = "MP4 - 1440p",
         mp4_1080p = "MP4 - 1080p",
         mp4_720p = "MP4 - 720p",
+        mp4_car_720p = "MP4 carro - 720p",
         mp4_480p = "MP4 - 480p",
         mp3_320k = "MP3 - 320k",
         mp3_256k = "MP3 - 256k",

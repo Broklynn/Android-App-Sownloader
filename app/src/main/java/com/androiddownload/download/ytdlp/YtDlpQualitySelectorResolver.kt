@@ -9,10 +9,11 @@ object YtDlpQualitySelectorResolver {
 
     fun resolve(url: String, selectedSelector: String?): String? {
         val selector = selectedSelector?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val downloadSelector = selector.downloadSelector()
         return if (isTikTokUrl(url) && selector.isMp4Preset()) {
             TIKTOK_MP4_SELECTOR
         } else {
-            selector
+            downloadSelector
         }
     }
 
@@ -25,6 +26,14 @@ object YtDlpQualitySelectorResolver {
         return this == YtDlpQualityOptions.SELECTOR_MP4_1440P ||
             this == YtDlpQualityOptions.SELECTOR_MP4_1080P ||
             this == YtDlpQualityOptions.SELECTOR_MP4_720P ||
+            this == YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P ||
             this == YtDlpQualityOptions.SELECTOR_MP4_480P
+    }
+
+    private fun String.downloadSelector(): String {
+        return when (this) {
+            YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P -> YtDlpQualityOptions.SELECTOR_MP4_720P
+            else -> this
+        }
     }
 }

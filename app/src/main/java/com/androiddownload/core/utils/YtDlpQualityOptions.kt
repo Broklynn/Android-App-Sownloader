@@ -17,6 +17,7 @@ data class YtDlpQualityLabelTexts(
     val mp4_1440p: String,
     val mp4_1080p: String,
     val mp4_720p: String,
+    val mp4_car_720p: String,
     val mp4_480p: String,
     val mp3_320k: String,
     val mp3_256k: String,
@@ -29,6 +30,7 @@ object YtDlpQualityOptions {
     const val SELECTOR_MP4_1080P = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]"
     const val SELECTOR_MP4_720P = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]"
     const val SELECTOR_MP4_480P = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]"
+    const val SELECTOR_MP4_CAR_COMPATIBLE_720P = VideoCompatibilityProfile.SELECTOR_CAR_COMPATIBLE_720P
     const val SELECTOR_MP3_320K = "mp3:320K"
     const val SELECTOR_MP3_256K = "mp3:256K"
     const val SELECTOR_MP3_192K = "mp3:192K"
@@ -39,6 +41,7 @@ object YtDlpQualityOptions {
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp4_1440p), SELECTOR_MP4_1440P),
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp4_1080p), SELECTOR_MP4_1080P),
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp4_720p), SELECTOR_MP4_720P),
+            YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp4_car_720p), SELECTOR_MP4_CAR_COMPATIBLE_720P),
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp4_480p), SELECTOR_MP4_480P),
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp3_320k), SELECTOR_MP3_320K),
             YtDlpQualityOption(context.getString(R.string.ytdlp_quality_mp3_256k), SELECTOR_MP3_256K),
@@ -64,6 +67,7 @@ object YtDlpQualityOptions {
                 mp4_1440p = context.getString(R.string.ytdlp_quality_mp4_1440p),
                 mp4_1080p = context.getString(R.string.ytdlp_quality_mp4_1080p),
                 mp4_720p = context.getString(R.string.ytdlp_quality_mp4_720p),
+                mp4_car_720p = context.getString(R.string.ytdlp_quality_mp4_car_720p),
                 mp4_480p = context.getString(R.string.ytdlp_quality_mp4_480p),
                 mp3_320k = context.getString(R.string.ytdlp_quality_mp3_320k),
                 mp3_256k = context.getString(R.string.ytdlp_quality_mp3_256k),
@@ -85,6 +89,7 @@ object YtDlpQualityOptions {
             selector == SELECTOR_MP4_1440P -> labels.mp4_1440p
             selector == SELECTOR_MP4_1080P -> labels.mp4_1080p
             selector == SELECTOR_MP4_720P -> labels.mp4_720p
+            selector == SELECTOR_MP4_CAR_COMPATIBLE_720P -> labels.mp4_car_720p
             selector == SELECTOR_MP4_480P -> labels.mp4_480p
             selector == SELECTOR_MP3_320K -> labels.mp3_320k
             selector == SELECTOR_MP3_256K -> labels.mp3_256k

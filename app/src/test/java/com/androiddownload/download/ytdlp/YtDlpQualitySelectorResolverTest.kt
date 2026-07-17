@@ -51,6 +51,28 @@ class YtDlpQualitySelectorResolverTest {
     }
 
     @Test
+    fun youtubeCarCompatible720pDownloadsAsMp4720p() {
+        assertEquals(
+            YtDlpQualityOptions.SELECTOR_MP4_720P,
+            YtDlpQualitySelectorResolver.resolve(
+                url = "https://www.youtube.com/watch?v=abc",
+                selectedSelector = YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P
+            )
+        )
+    }
+
+    @Test
+    fun tiktokCarCompatible720pUsesPermissiveMp4Selector() {
+        assertEquals(
+            YtDlpQualitySelectorResolver.TIKTOK_MP4_SELECTOR,
+            YtDlpQualitySelectorResolver.resolve(
+                url = "https://vt.tiktok.com/ZSxDVKFum/",
+                selectedSelector = YtDlpQualityOptions.SELECTOR_MP4_CAR_COMPATIBLE_720P
+            )
+        )
+    }
+
+    @Test
     fun instagramMp4KeepsSelectedSelector() {
         assertEquals(
             YtDlpQualityOptions.SELECTOR_MP4_720P,
