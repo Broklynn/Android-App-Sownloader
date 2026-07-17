@@ -21,11 +21,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
 import java.io.File
 import java.io.EOFException
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -50,6 +48,7 @@ class HttpDownloader(
     private val activeCalls = ConcurrentHashMap<Long, Call>()
     private val cancelRequests = ConcurrentHashMap.newKeySet<Long>()
     private val pauseRequests = ConcurrentHashMap.newKeySet<Long>()
+    private val resumeTransfer = HttpResumeTransfer(client)
 
     suspend fun download(
         downloadId: Long,
@@ -158,16 +157,10 @@ class HttpDownloader(
         onProgress()
 
         val tempFile = createTempFile(downloadId)
-        var resumeOffset = when {
-            forceFromZero -> 0L
-            mode == DownloadMode.RESUME && current.status == DownloadStatus.PAUSED && tempFile.exists() -> {
-                current.downloadedBytes.coerceAtLeast(0)
-            }
-            mode == DownloadMode.RETRY && tempFile.exists() && current.downloadedBytes > 0L -> {
-                current.downloadedBytes.coerceAtLeast(0)
-            }
-            else -> 0L
-        }
+        val resumeAllowed = !forceFromZero && (
+            mode == DownloadMode.RESUME && current.status == DownloadStatus.PAUSED ||
+                mode == DownloadMode.RETRY
+            )
 
         val requestBuilder = Request.Builder()
             .url(current.sourceUrl)
@@ -177,31 +170,160 @@ class HttpDownloader(
             requestBuilder.header(name, value)
         }
 
-        if (resumeOffset > 0L) {
-            requestBuilder.header("Range", "bytes=$resumeOffset-")
-        }
-
-        val call = client.newCall(requestBuilder.build())
-        activeCalls[downloadId] = call
-
         try {
-            call.execute().use { response ->
-                if (!response.isSuccessful) {
-                    handleHttpError(response.code)
-                }
+            var displayFileName = current.fileName.orEmpty()
+            var resolvedMimeType = current.mimeType
+            var resolvedTotalBytes = 0L
+            var startedAt = 0L
+            var lastUpdateAt = 0L
+            var lastProgress = 0
 
-                if (resumeOffset > 0L && response.code != 206) {
-                    if (mode == DownloadMode.RETRY && !forceFromZero) {
-                        deleteTempFile(downloadId)
-                        performAttempt(
-                            downloadId = downloadId,
-                            current = current.copy(downloadedBytes = 0, tempPath = null),
-                            mode = DownloadMode.NORMAL,
-                            forceFromZero = true,
-                            onProgress = onProgress
+            val transferResult = resumeTransfer.execute(
+                baseRequest = requestBuilder.build(),
+                tempFile = tempFile,
+                persistedDownloadedBytes = current.downloadedBytes,
+                resumeAllowed = resumeAllowed,
+                expectedTotalBytes = current.totalBytes,
+                canRestartFromZero = !forceFromZero,
+                onCallReady = { call, offsetResolution ->
+                    activeCalls[downloadId] = call
+                    if (offsetResolution.reconciled) {
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = "HTTP direto",
+                            attempt = "retomada",
+                            result = "offset reconciliado: Room=${offsetResolution.persistedOffset}, " +
+                                "arquivo=${offsetResolution.requestedOffset}",
+                            type = "diagnostico"
                         )
-                        return
                     }
+                },
+                onResponseReady = { responseInfo ->
+                    if (responseInfo.offsetResolution.requestedOffset > 0L &&
+                        responseInfo.writeOffset == 0L
+                    ) {
+                        YtDlpDiagnostics.record(
+                            context = context,
+                            url = current.sourceUrl,
+                            option = "HTTP direto",
+                            attempt = "retomada",
+                            result = "servidor ignorou Range; temporario reiniciado",
+                            type = "fallback"
+                        )
+                    }
+
+                    resolvedMimeType = responseInfo.contentType ?: current.mimeType
+                    val fileName = resolveDownloadFileName(
+                        url = responseInfo.finalUrl,
+                        contentDisposition = responseInfo.contentDisposition,
+                        mimeType = resolvedMimeType,
+                        suggestedFileName = current.fileName
+                    )
+                    displayFileName = FileNameUtils.ensureExtension(
+                        FileNameUtils.sanitize(fileName),
+                        resolvedMimeType
+                    )
+                    resolvedTotalBytes = responseInfo.trustedTotalBytes ?: 0L
+                    startedAt = SystemClock.elapsedRealtime()
+                    lastProgress = calculateProgress(responseInfo.writeOffset, resolvedTotalBytes)
+
+                    repository.update(
+                        current.copy(
+                            finalUrl = responseInfo.finalUrl,
+                            fileName = displayFileName,
+                            mimeType = resolvedMimeType,
+                            tempPath = tempFile.absolutePath,
+                            totalBytes = resolvedTotalBytes,
+                            downloadedBytes = responseInfo.writeOffset,
+                            progress = lastProgress,
+                            speed = 0,
+                            status = DownloadStatus.RUNNING,
+                            errorMessage = null
+                        )
+                    )
+                    onProgress()
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = "HTTP direto",
+                        attempt = "progresso",
+                        result = "throttle Room HTTP aplicado: 500ms/1s",
+                        type = "desempenho"
+                    )
+                },
+                onBytesWritten = { responseInfo, sessionDownloadedBytes ->
+                    val downloadedBytes = responseInfo.writeOffset + sessionDownloadedBytes
+                    val now = SystemClock.elapsedRealtime()
+                    val progress = calculateProgress(downloadedBytes, resolvedTotalBytes)
+                    if (shouldPersistProgress(
+                            lastUpdateAt = lastUpdateAt,
+                            lastProgress = lastProgress,
+                            now = now,
+                            progress = progress,
+                            downloadedBytes = downloadedBytes,
+                            totalBytes = resolvedTotalBytes
+                        )
+                    ) {
+                        repository.update(
+                            current.copy(
+                                finalUrl = responseInfo.finalUrl,
+                                fileName = displayFileName,
+                                mimeType = resolvedMimeType,
+                                tempPath = tempFile.absolutePath,
+                                totalBytes = resolvedTotalBytes,
+                                downloadedBytes = downloadedBytes,
+                                progress = progress,
+                                speed = calculateSpeed(sessionDownloadedBytes, startedAt, now),
+                                status = DownloadStatus.RUNNING,
+                                errorMessage = null
+                            )
+                        )
+                        onProgress()
+                        lastUpdateAt = now
+                        lastProgress = progress
+                    }
+                },
+                checkActive = {
+                    currentCoroutineContext().ensureActive()
+                    throwIfCancelRequested(downloadId)
+                    throwIfPauseRequested(downloadId)
+                }
+            )
+
+            when (transferResult) {
+                is HttpResumeTransfer.Result.RestartFromZero -> {
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = "HTTP direto",
+                        attempt = "retomada",
+                        result = "${transferResult.reason} Reinicio controlado sem Range.",
+                        type = "fallback"
+                    )
+                    deleteTempFile(downloadId)
+                    performAttempt(
+                        downloadId = downloadId,
+                        current = current.copy(
+                            downloadedBytes = 0,
+                            totalBytes = 0,
+                            tempPath = null
+                        ),
+                        mode = DownloadMode.NORMAL,
+                        forceFromZero = true,
+                        onProgress = onProgress
+                    )
+                    return
+                }
+                is HttpResumeTransfer.Result.Rejected -> {
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = "HTTP direto",
+                        attempt = "retomada",
+                        result = transferResult.reason,
+                        type = "erro"
+                    )
                     throw DownloadFailureException(
                         DownloadFailure(
                             message = context.getString(R.string.download_resume_not_supported),
@@ -209,161 +331,57 @@ class HttpDownloader(
                         )
                     )
                 }
-
-                val body = response.body ?: throw DownloadFailureException(
-                    DownloadFailure(
-                        message = context.getString(R.string.download_http_error),
-                        retryable = true
+                is HttpResumeTransfer.Result.HttpError -> {
+                    handleHttpError(transferResult.responseCode)
+                }
+                is HttpResumeTransfer.Result.IntegrityFailure -> {
+                    YtDlpDiagnostics.record(
+                        context = context,
+                        url = current.sourceUrl,
+                        option = "HTTP direto",
+                        attempt = "integridade",
+                        result = transferResult.reason,
+                        type = "erro"
                     )
-                )
-
-                val contentRange = response.header("Content-Range")
-                val contentLength = body.contentLength()
-                val totalBytes = resolveTotalBytes(
-                    responseCode = response.code,
-                    contentRange = contentRange,
-                    resumeOffset = resumeOffset,
-                    fallback = current.totalBytes,
-                    bodyLength = contentLength
-                )
-
-                if (resumeOffset > 0L) {
-                    val contentRangeStart = parseContentRangeStart(contentRange)
-                    if (contentRangeStart != null && contentRangeStart != resumeOffset) {
-                        if (mode == DownloadMode.RETRY && !forceFromZero) {
-                            deleteTempFile(downloadId)
-                            performAttempt(
-                                downloadId = downloadId,
-                                current = current.copy(downloadedBytes = 0, tempPath = null),
-                                mode = DownloadMode.NORMAL,
-                                forceFromZero = true,
-                                onProgress = onProgress
-                            )
-                            return
-                        }
-                        throw DownloadFailureException(
-                            DownloadFailure(
-                                message = context.getString(R.string.download_resume_not_supported),
-                                retryable = false
-                            )
+                    deleteTempFile(downloadId)
+                    throw DownloadFailureException(
+                        DownloadFailure(
+                            message = "${context.getString(R.string.download_http_error)} " +
+                                transferResult.reason,
+                            retryable = true
                         )
-                    }
-                }
-
-                val mimeType = body.contentType()?.toString() ?: current.mimeType
-                val fileName = resolveDownloadFileName(
-                    url = response.request.url.toString(),
-                    contentDisposition = response.header("Content-Disposition"),
-                    mimeType = mimeType,
-                    suggestedFileName = current.fileName
-                )
-                val displayFileName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(fileName), mimeType)
-
-                repository.update(
-                    current.copy(
-                        finalUrl = response.request.url.toString(),
-                        fileName = displayFileName,
-                        mimeType = mimeType,
-                        tempPath = tempFile.absolutePath,
-                        totalBytes = totalBytes,
-                        downloadedBytes = resumeOffset,
-                        progress = calculateProgress(resumeOffset, totalBytes),
-                        speed = 0,
-                        status = DownloadStatus.RUNNING,
-                        errorMessage = null
                     )
-                )
-                onProgress()
-                YtDlpDiagnostics.record(
-                    context = context,
-                    url = current.sourceUrl,
-                    option = "HTTP direto",
-                    attempt = "progresso",
-                    result = "throttle Room HTTP aplicado: 500ms/1s",
-                    type = "desempenho"
-                )
-
-                var sessionDownloadedBytes = 0L
-                val startedAt = SystemClock.elapsedRealtime()
-                var lastUpdateAt = 0L
-                var lastProgress = calculateProgress(resumeOffset, totalBytes)
-
-                body.byteStream().use { input ->
-                    FileOutputStream(tempFile, resumeOffset > 0L).use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            currentCoroutineContext().ensureActive()
-                            throwIfCancelRequested(downloadId)
-                            throwIfPauseRequested(downloadId)
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            throwIfCancelRequested(downloadId)
-                            throwIfPauseRequested(downloadId)
-
-                            output.write(buffer, 0, read)
-                            sessionDownloadedBytes += read
-
-                            val downloadedBytes = resumeOffset + sessionDownloadedBytes
-                            val now = SystemClock.elapsedRealtime()
-                            val progress = calculateProgress(downloadedBytes, totalBytes)
-                            if (shouldPersistProgress(
-                                    lastUpdateAt = lastUpdateAt,
-                                    lastProgress = lastProgress,
-                                    now = now,
-                                    progress = progress,
-                                    downloadedBytes = downloadedBytes,
-                                    totalBytes = totalBytes
-                                )
-                            ) {
-                                repository.update(
-                                    current.copy(
-                                        finalUrl = response.request.url.toString(),
-                                        fileName = displayFileName,
-                                        mimeType = mimeType,
-                                        tempPath = tempFile.absolutePath,
-                                        totalBytes = totalBytes,
-                                        downloadedBytes = downloadedBytes,
-                                        progress = progress,
-                                        speed = calculateSpeed(sessionDownloadedBytes, startedAt, now),
-                                        status = DownloadStatus.RUNNING,
-                                        errorMessage = null
-                                    )
-                                )
-                                onProgress()
-                                lastUpdateAt = now
-                                lastProgress = progress
-                            }
-                        }
-                    }
                 }
+                is HttpResumeTransfer.Result.Transferred -> {
+                    val responseInfo = transferResult.responseInfo
+                    throwIfCancelRequested(downloadId)
+                    throwIfPauseRequested(downloadId)
 
-                throwIfCancelRequested(downloadId)
-                throwIfPauseRequested(downloadId)
-
-                val savedFile = DownloadDestinationResolver.saveToDestination(
-                    context = context,
-                    sourceFile = tempFile,
-                    preferredName = displayFileName,
-                    mimeType = mimeType,
-                    preserveName = resumeOffset > 0L,
-                    destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(current)
-                )
-                repository.update(
-                    current.copy(
-                        finalUrl = response.request.url.toString(),
-                        fileName = savedFile.fileName,
-                        mimeType = mimeType,
-                        destinationUri = savedFile.uri.toString(),
-                        tempPath = null,
-                        totalBytes = if (totalBytes > 0) totalBytes else savedFile.bytes,
-                        downloadedBytes = savedFile.bytes,
-                        progress = 100,
-                        speed = 0,
-                        status = DownloadStatus.COMPLETED,
-                        errorMessage = null
+                    val savedFile = DownloadDestinationResolver.saveToDestination(
+                        context = context,
+                        sourceFile = tempFile,
+                        preferredName = displayFileName,
+                        mimeType = resolvedMimeType,
+                        preserveName = responseInfo.writeOffset > 0L,
+                        destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(current)
                     )
-                )
-                onProgress()
+                    repository.update(
+                        current.copy(
+                            finalUrl = responseInfo.finalUrl,
+                            fileName = savedFile.fileName,
+                            mimeType = resolvedMimeType,
+                            destinationUri = savedFile.uri.toString(),
+                            tempPath = null,
+                            totalBytes = resolvedTotalBytes,
+                            downloadedBytes = savedFile.bytes,
+                            progress = 100,
+                            speed = 0,
+                            status = DownloadStatus.COMPLETED,
+                            errorMessage = null
+                        )
+                    )
+                    onProgress()
+                }
             }
         } catch (exception: CancellationException) {
             throw exception
@@ -562,51 +580,6 @@ class HttpDownloader(
         }
     }
 
-    private fun resolveTotalBytes(
-        responseCode: Int,
-        contentRange: String?,
-        resumeOffset: Long,
-        fallback: Long,
-        bodyLength: Long
-    ): Long {
-        if (responseCode == 206) {
-            val parsedTotal = parseContentRangeTotal(contentRange)
-            if (parsedTotal != null) {
-                return parsedTotal
-            }
-            if (bodyLength > 0) {
-                return resumeOffset + bodyLength
-            }
-            if (fallback > 0L) {
-                return fallback
-            }
-            return 0L
-        }
-
-        if (bodyLength > 0) {
-            return bodyLength
-        }
-
-        if (fallback > 0L) {
-            return fallback
-        }
-
-        return 0L
-    }
-
-    private fun parseContentRangeTotal(contentRange: String?): Long? {
-        if (contentRange.isNullOrBlank()) return null
-        val match = CONTENT_RANGE_REGEX.find(contentRange.trim()) ?: return null
-        val totalPart = match.groupValues[3]
-        return totalPart.takeIf { it != "*" }?.toLongOrNull()
-    }
-
-    private fun parseContentRangeStart(contentRange: String?): Long? {
-        if (contentRange.isNullOrBlank()) return null
-        val match = CONTENT_RANGE_REGEX.find(contentRange.trim()) ?: return null
-        return match.groupValues[1].toLongOrNull()
-    }
-
     private fun throwIfCancelRequested(downloadId: Long) {
         if (cancelRequests.contains(downloadId)) {
             throw CancellationException("Download cancelado")
@@ -686,7 +659,6 @@ class HttpDownloader(
         const val PROGRESS_HEARTBEAT_INTERVAL_MS = 1000L
         const val MAX_ATTEMPTS = 3
         val RETRY_BACKOFF_MS = longArrayOf(0L, 1000L, 3000L)
-        val CONTENT_RANGE_REGEX = Regex("""bytes\s+(\d+)-(\d+|\*)/(\d+|\*)""")
         val HTTP_CODE_REGEX = Regex("""HTTP\s+(\d{3})""")
     }
 
