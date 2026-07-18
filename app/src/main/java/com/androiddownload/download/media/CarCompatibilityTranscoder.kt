@@ -53,8 +53,7 @@ class CarCompatibilityTranscoder(
         outputFile: File,
         profile: VideoCompatibilityProfile
     ): List<String> {
-        val maxWidth = profile.maxHeight * 16 / 9
-        val videoFilter = "scale='min($maxWidth,iw)':-2,fps=${profile.maxFps},format=${profile.pixelFormat}"
+        val videoFilter = CarVideoScaleResolver.buildFilter(profile)
         return listOf(
             "-y",
             "-i",

@@ -63,11 +63,29 @@ class CarCompatibilityTranscoderTest {
             profile = VideoCompatibilityProfile.CAR_COMPATIBLE_720P
         )
 
-        val command = runner.lastArguments.joinToString(" ")
-        assertTrue(command.contains("libx264"))
-        assertTrue(command.contains("yuv420p"))
-        assertTrue(command.contains("fps=30"))
-        assertTrue(command.contains("+faststart"))
+        val command = runner.lastArguments
+        assertContainsSequence(command, "-c:v", "libx264")
+        assertContainsSequence(command, "-profile:v", "baseline")
+        assertContainsSequence(command, "-level", "3.1")
+        assertContainsSequence(command, "-movflags", "+faststart")
+        assertTrue(command.optionValue("-vf")?.contains("fps=30") == true)
+        assertTrue(command.optionValue("-vf")?.contains("format=yuv420p") == true)
+    }
+
+    @Test
+    fun commandConstrainsPortraitVideoTo1280By720BoxWithoutUpscaling() {
+        val command = transcoder(RecordingRunner()).buildCommand(
+            inputFile = tempPath("portrait-input.mp4"),
+            outputFile = tempPath("portrait-output.mp4"),
+            profile = VideoCompatibilityProfile.CAR_COMPATIBLE_720P
+        )
+
+        assertEquals(
+            "scale='min(1280,iw)':'min(720,ih)':" +
+                "force_original_aspect_ratio=decrease:force_divisible_by=2," +
+                "fps=30,format=yuv420p",
+            command.optionValue("-vf")
+        )
     }
 
     @Test
@@ -164,6 +182,10 @@ class CarCompatibilityTranscoderTest {
         val index = arguments.indexOf(first)
         assertTrue("$first not found", index >= 0)
         assertEquals(second, arguments.getOrNull(index + 1))
+    }
+
+    private fun List<String>.optionValue(option: String): String? {
+        return getOrNull(indexOf(option) + 1)
     }
 
     private class RecordingRunner(

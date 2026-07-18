@@ -2,6 +2,7 @@ package com.androiddownload.core.utils
 
 data class VideoCompatibilityProfile(
     val selector: String,
+    val maxWidth: Int,
     val maxHeight: Int,
     val maxFps: Int,
     val container: String,
@@ -14,6 +15,7 @@ data class VideoCompatibilityProfile(
 
         val CAR_COMPATIBLE_720P = VideoCompatibilityProfile(
             selector = SELECTOR_CAR_COMPATIBLE_720P,
+            maxWidth = 1280,
             maxHeight = 720,
             maxFps = 30,
             container = "mp4",

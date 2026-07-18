@@ -26,6 +26,7 @@ class VideoCompatibilityProfileTest {
     fun carCompatible720pProfileUsesExpectedLimits() {
         val profile = VideoCompatibilityProfile.CAR_COMPATIBLE_720P
 
+        assertEquals(1280, profile.maxWidth)
         assertEquals(720, profile.maxHeight)
         assertEquals(30, profile.maxFps)
     }
