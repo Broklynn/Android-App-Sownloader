@@ -410,6 +410,9 @@ class YtDlpDownloader(
                             durationMs = elapsedMs(flowStartedAt)
                         )
                         return@withContext
+                    } catch (exception: CancellationException) {
+                        tempDir.deleteRecursively()
+                        throw exception
                     } catch (exception: Exception) {
                         lastException = exception
                         failedAttemptCount++

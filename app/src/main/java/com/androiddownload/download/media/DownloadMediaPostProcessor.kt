@@ -7,7 +7,7 @@ import java.io.File
 class DownloadMediaPostProcessor(
     private val carCompatibilityTranscoder: CarCompatibilityTranscoder
 ) {
-    fun process(
+    suspend fun process(
         inputFile: File,
         preferredName: String,
         mimeType: String?,
@@ -38,6 +38,12 @@ class DownloadMediaPostProcessor(
                 preferredName = preferredName,
                 mimeType = mimeType,
                 reason = transcodeResult.message
+            )
+            is CarCompatibilityTranscoder.TranscodeResult.TimedOut -> Result.Fallback(
+                file = inputFile,
+                preferredName = preferredName,
+                mimeType = mimeType,
+                reason = "FFmpeg excedeu o tempo limite de execucao."
             )
         }
     }

@@ -1,6 +1,8 @@
 package com.androiddownload.download.media
 
 import com.androiddownload.core.utils.VideoCompatibilityProfile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,7 +11,7 @@ import java.io.File
 
 class CarCompatibilityTranscoderTest {
     @Test
-    fun missingInputIsSkipped() {
+    fun missingInputIsSkipped() = runBlocking {
         val runner = RecordingRunner()
         val result = transcoder(runner).transcode(
             inputFile = tempPath("missing-input.mp4"),
@@ -22,7 +24,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun emptyInputIsSkipped() {
+    fun emptyInputIsSkipped() = runBlocking {
         val input = File.createTempFile("empty-input", ".mp4")
         val runner = RecordingRunner()
 
@@ -37,7 +39,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun sameInputAndOutputIsSkipped() {
+    fun sameInputAndOutputIsSkipped() = runBlocking {
         val input = nonEmptyTempFile("same-file-input", ".mp4")
         val runner = RecordingRunner()
 
@@ -52,7 +54,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun commandContainsCarCompatibilityVideoOptions() {
+    fun commandContainsCarCompatibilityVideoOptions() = runBlocking {
         val input = nonEmptyTempFile("command-input", ".mp4")
         val output = tempPath("command-output.mp4")
         val runner = RecordingRunner()
@@ -73,7 +75,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun commandConstrainsPortraitVideoTo1280By720BoxWithoutUpscaling() {
+    fun commandConstrainsPortraitVideoTo1280By720BoxWithoutUpscaling() = runBlocking {
         val command = transcoder(RecordingRunner()).buildCommand(
             inputFile = tempPath("portrait-input.mp4"),
             outputFile = tempPath("portrait-output.mp4"),
@@ -89,7 +91,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun commandContainsCarCompatibilityAudioOptions() {
+    fun commandContainsCarCompatibilityAudioOptions() = runBlocking {
         val input = nonEmptyTempFile("audio-input", ".mp4")
         val output = tempPath("audio-output.mp4")
         val runner = RecordingRunner()
@@ -106,12 +108,12 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun successReturnsExpectedOutputFile() {
+    fun successReturnsExpectedOutputFile() = runBlocking {
         val input = nonEmptyTempFile("success-input", ".mp4")
         val output = tempPath("success-output.mp4")
         val runner = RecordingRunner { arguments ->
             File(arguments.last()).writeBytes(byteArrayOf(4, 2))
-            FfmpegCommandResult.Success
+            FfmpegExecutionResult.Success()
         }
 
         val result = transcoder(runner).transcode(
@@ -127,11 +129,11 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun failedRunnerReturnsFailureWithoutCrash() {
+    fun failedRunnerReturnsFailureWithoutCrash() = runBlocking {
         val input = nonEmptyTempFile("failure-input", ".mp4")
         val output = tempPath("failure-output.mp4")
         val runner = RecordingRunner {
-            FfmpegCommandResult.Failure("encoder unavailable")
+            FfmpegExecutionResult.Failure("encoder unavailable")
         }
 
         val result = transcoder(runner).transcode(
@@ -145,7 +147,7 @@ class CarCompatibilityTranscoderTest {
     }
 
     @Test
-    fun throwingRunnerReturnsFailureWithoutCrash() {
+    fun throwingRunnerReturnsFailureWithoutCrash() = runBlocking {
         val input = nonEmptyTempFile("throwing-input", ".mp4")
         val output = tempPath("throwing-output.mp4")
         val runner = RecordingRunner {
@@ -160,6 +162,49 @@ class CarCompatibilityTranscoderTest {
 
         assertTrue(result is CarCompatibilityTranscoder.TranscodeResult.Failure)
         assertEquals("boom", (result as CarCompatibilityTranscoder.TranscodeResult.Failure).message)
+    }
+
+    @Test
+    fun canceledRunnerPropagatesCancellationException() = runBlocking {
+        val input = nonEmptyTempFile("cancel-input", ".mp4")
+        val runner = RecordingRunner {
+            throw CancellationException("cancelled")
+        }
+
+        var cancellation: CancellationException? = null
+        try {
+            transcoder(runner).transcode(
+                inputFile = input,
+                outputFile = tempPath("cancel-output.mp4"),
+                profile = VideoCompatibilityProfile.CAR_COMPATIBLE_720P
+            )
+        } catch (exception: CancellationException) {
+            cancellation = exception
+        }
+
+        assertEquals("cancelled", cancellation?.message)
+    }
+
+    @Test
+    fun timedOutRunnerReturnsTimedOutResult() = runBlocking {
+        val input = nonEmptyTempFile("timeout-input", ".mp4")
+        val runner = RecordingRunner {
+            FfmpegExecutionResult.TimedOut(
+                timeoutMillis = 500L,
+                diagnostics = FfmpegExecutionDiagnostics()
+            )
+        }
+
+        val result = transcoder(runner).transcode(
+            inputFile = input,
+            outputFile = tempPath("timeout-output.mp4"),
+            profile = VideoCompatibilityProfile.CAR_COMPATIBLE_720P
+        )
+
+        assertEquals(
+            500L,
+            (result as CarCompatibilityTranscoder.TranscodeResult.TimedOut).timeoutMillis
+        )
     }
 
     private fun transcoder(runner: FfmpegCommandRunner): CarCompatibilityTranscoder {
@@ -189,9 +234,9 @@ class CarCompatibilityTranscoderTest {
     }
 
     private class RecordingRunner(
-        private val resultProvider: (List<String>) -> FfmpegCommandResult = { arguments ->
+        private val resultProvider: (List<String>) -> FfmpegExecutionResult = { arguments ->
             File(arguments.last()).writeBytes(byteArrayOf(1))
-            FfmpegCommandResult.Success
+            FfmpegExecutionResult.Success()
         }
     ) : FfmpegCommandRunner {
         var wasCalled = false
@@ -199,7 +244,7 @@ class CarCompatibilityTranscoderTest {
         var lastArguments: List<String> = emptyList()
             private set
 
-        override fun run(arguments: List<String>): FfmpegCommandResult {
+        override suspend fun run(arguments: List<String>): FfmpegExecutionResult {
             wasCalled = true
             lastArguments = arguments
             return resultProvider(arguments)

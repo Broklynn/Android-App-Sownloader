@@ -1,6 +1,8 @@
 package com.androiddownload.download.media
 
 import com.androiddownload.core.utils.VideoCompatibilityProfile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,7 +11,7 @@ import java.io.File
 
 class DownloadMediaPostProcessorTest {
     @Test
-    fun normalSelectorKeepsOriginalFileWithoutCallingTranscoder() {
+    fun normalSelectorKeepsOriginalFileWithoutCallingTranscoder() = runBlocking {
         val input = nonEmptyTempFile("normal-selector", ".mp4")
         val runner = RecordingRunner()
 
@@ -27,11 +29,11 @@ class DownloadMediaPostProcessorTest {
     }
 
     @Test
-    fun carCompatibleSelectorReturnsProcessedFileWithFriendlyName() {
+    fun carCompatibleSelectorReturnsProcessedFileWithFriendlyName() = runBlocking {
         val input = nonEmptyTempFile("car-selector", ".mp4")
         val runner = RecordingRunner { arguments ->
             File(arguments.last()).writeBytes(byteArrayOf(1, 2, 3))
-            FfmpegCommandResult.Success
+            FfmpegExecutionResult.Success()
         }
 
         val result = processor(runner).process(
@@ -50,7 +52,7 @@ class DownloadMediaPostProcessorTest {
     }
 
     @Test
-    fun carCompatibleSelectorDoesNotProcessNonMp4Output() {
+    fun carCompatibleSelectorDoesNotProcessNonMp4Output() = runBlocking {
         val input = nonEmptyTempFile("car-audio", ".mp3")
         val runner = RecordingRunner()
 
@@ -67,10 +69,10 @@ class DownloadMediaPostProcessorTest {
     }
 
     @Test
-    fun carCompatibleFailureFallsBackToOriginalFile() {
+    fun carCompatibleFailureFallsBackToOriginalFile() = runBlocking {
         val input = nonEmptyTempFile("car-fallback", ".mp4")
         val runner = RecordingRunner {
-            FfmpegCommandResult.Failure("encoder unavailable")
+            FfmpegExecutionResult.Failure("encoder unavailable")
         }
 
         val result = processor(runner).process(
@@ -86,6 +88,53 @@ class DownloadMediaPostProcessorTest {
         assertEquals("encoder unavailable", (result as DownloadMediaPostProcessor.Result.Fallback).reason)
     }
 
+    @Test
+    fun carCompatibleTimeoutFallsBackToOriginalFile() = runBlocking {
+        val input = nonEmptyTempFile("car-timeout", ".mp4")
+        val runner = RecordingRunner {
+            FfmpegExecutionResult.TimedOut(
+                timeoutMillis = 500L,
+                diagnostics = FfmpegExecutionDiagnostics()
+            )
+        }
+
+        val result = processor(runner).process(
+            inputFile = input,
+            preferredName = "Video.mp4",
+            mimeType = "video/mp4",
+            qualitySelector = VideoCompatibilityProfile.SELECTOR_CAR_COMPATIBLE_720P
+        )
+
+        assertTrue(result is DownloadMediaPostProcessor.Result.Fallback)
+        assertEquals(input.canonicalPath, result.file.canonicalPath)
+        assertEquals(
+            "FFmpeg excedeu o tempo limite de execucao.",
+            (result as DownloadMediaPostProcessor.Result.Fallback).reason
+        )
+    }
+
+    @Test
+    fun carCompatibleCancellationIsNotConvertedToFallback() = runBlocking {
+        val input = nonEmptyTempFile("car-cancel", ".mp4")
+        val runner = RecordingRunner {
+            throw CancellationException("cancelled")
+        }
+
+        var cancellation: CancellationException? = null
+        try {
+            processor(runner).process(
+                inputFile = input,
+                preferredName = "Video.mp4",
+                mimeType = "video/mp4",
+                qualitySelector = VideoCompatibilityProfile.SELECTOR_CAR_COMPATIBLE_720P
+            )
+        } catch (exception: CancellationException) {
+            cancellation = exception
+        }
+
+        assertEquals("cancelled", cancellation?.message)
+    }
+
     private fun processor(runner: FfmpegCommandRunner): DownloadMediaPostProcessor {
         return DownloadMediaPostProcessor(CarCompatibilityTranscoder(runner))
     }
@@ -98,14 +147,14 @@ class DownloadMediaPostProcessorTest {
     }
 
     private class RecordingRunner(
-        private val resultProvider: (List<String>) -> FfmpegCommandResult = {
-            FfmpegCommandResult.Success
+        private val resultProvider: (List<String>) -> FfmpegExecutionResult = {
+            FfmpegExecutionResult.Success()
         }
     ) : FfmpegCommandRunner {
         var wasCalled = false
             private set
 
-        override fun run(arguments: List<String>): FfmpegCommandResult {
+        override suspend fun run(arguments: List<String>): FfmpegExecutionResult {
             wasCalled = true
             return resultProvider(arguments)
         }
