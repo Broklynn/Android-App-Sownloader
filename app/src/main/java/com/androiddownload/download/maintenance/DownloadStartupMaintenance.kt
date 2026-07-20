@@ -7,6 +7,7 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.data.DownloadTransitionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -29,15 +30,29 @@ class DownloadStartupMaintenance(
         )
         YtDlpDiagnostics.pruneOldEvents(context)
         val downloads = repository.observeDownloads().first()
-        val recoveredDownloads = downloads.map { recoverInterruptedDownload(it) }
+        val recoveryResolutions = downloads.map { recoverInterruptedDownload(it) }
+        val recoveredDownloads = recoveryResolutions.mapNotNull { it.download }
+        val cleanupBlockedIds = recoveryResolutions
+            .filterNot { it.cleanupAllowed }
+            .mapTo(mutableSetOf()) { it.observedId }
         val protectedDownloads = recoveredDownloads.filter { it.status in PROTECTED_STATUSES }
         val protectedIds = protectedDownloads.mapTo(mutableSetOf()) { it.id }
         val knownIds = recoveredDownloads.mapTo(mutableSetOf()) { it.id }
         val protectedTempPaths = protectedDownloads
             .mapNotNullTo(mutableSetOf()) { it.tempPath?.takeIf(String::isNotBlank)?.let(::File)?.canonicalPathSafe() }
 
-        val httpResult = cleanupHttpTempFiles(knownIds, protectedIds, protectedTempPaths)
-        val ytdlpResult = cleanupYtDlpTempDirs(knownIds, protectedIds, protectedTempPaths)
+        val httpResult = cleanupHttpTempFiles(
+            knownIds,
+            protectedIds,
+            protectedTempPaths,
+            cleanupBlockedIds
+        )
+        val ytdlpResult = cleanupYtDlpTempDirs(
+            knownIds,
+            protectedIds,
+            protectedTempPaths,
+            cleanupBlockedIds
+        )
         recordCleanupDiagnostics(httpResult + ytdlpResult)
         YtDlpDiagnostics.record(
             context = context,
@@ -50,14 +65,14 @@ class DownloadStartupMaintenance(
         )
     }
 
-    private suspend fun recoverInterruptedDownload(download: DownloadEntity): DownloadEntity {
+    private suspend fun recoverInterruptedDownload(download: DownloadEntity): RecoveryResolution {
         val staleQueued = download.status == DownloadStatus.QUEUED &&
             System.currentTimeMillis() - download.updatedAt > STALE_QUEUED_AGE_MS
         if (download.status != DownloadStatus.RUNNING &&
             download.status != DownloadStatus.PREPARING &&
             !staleQueued
         ) {
-            return download
+            return RecoveryResolution(download.id, download, cleanupAllowed = true)
         }
 
         val canResumeHttp = DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl) &&
@@ -69,33 +84,49 @@ class DownloadStartupMaintenance(
             context.getString(R.string.download_interrupted_retry)
         }
 
-        val recovered = if (canResumeHttp) {
-            download.copy(
-                status = DownloadStatus.PAUSED,
-                errorMessage = interruptedMessage,
-                speed = 0,
-                updatedAt = System.currentTimeMillis()
-            )
+        val recoveredStatus = if (canResumeHttp) {
+            DownloadStatus.PAUSED
         } else {
-            download.copy(
-                status = DownloadStatus.FAILED,
-                errorMessage = interruptedMessage,
-                tempPath = null,
-                downloadedBytes = 0,
-                progress = 0,
-                speed = 0,
-                updatedAt = System.currentTimeMillis()
-            )
+            DownloadStatus.FAILED
         }
+        val recoveredTempPath = download.tempPath.takeIf { canResumeHttp }
+        val recoveredTotalBytes = download.totalBytes
+        val recoveredDownloadedBytes = download.downloadedBytes.takeIf { canResumeHttp } ?: 0L
+        val recoveredProgress = download.progress.takeIf { canResumeHttp } ?: 0
 
-        repository.update(recovered)
-        return recovered
+        return when (
+            repository.recoverIfSnapshotCurrent(
+                observed = download,
+                recoveredStatus = recoveredStatus,
+                errorMessage = interruptedMessage,
+                tempPath = recoveredTempPath,
+                totalBytes = recoveredTotalBytes,
+                downloadedBytes = recoveredDownloadedBytes,
+                progress = recoveredProgress
+            )
+        ) {
+            DownloadTransitionResult.Applied -> {
+                RecoveryResolution(
+                    observedId = download.id,
+                    download = repository.getById(download.id),
+                    cleanupAllowed = true
+                )
+            }
+            is DownloadTransitionResult.Rejected -> {
+                RecoveryResolution(
+                    observedId = download.id,
+                    download = repository.getById(download.id),
+                    cleanupAllowed = false
+                )
+            }
+        }
     }
 
     private fun cleanupHttpTempFiles(
         knownIds: Set<Long>,
         protectedIds: Set<Long>,
-        protectedTempPaths: Set<String>
+        protectedTempPaths: Set<String>,
+        cleanupBlockedIds: Set<Long>
     ): CleanupResult {
         val result = CleanupResult()
         val tempDir = File(context.cacheDir, HTTP_TEMP_DIR_NAME)
@@ -105,6 +136,9 @@ class DownloadStartupMaintenance(
                 return@forEach
             }
             val downloadId = file.nameWithoutExtension.toLongOrNull() ?: return@forEach
+            if (downloadId in cleanupBlockedIds) {
+                return@forEach
+            }
             if (downloadId in protectedIds || file.canonicalPathSafe() in protectedTempPaths) {
                 return@forEach
             }
@@ -123,13 +157,17 @@ class DownloadStartupMaintenance(
     private fun cleanupYtDlpTempDirs(
         knownIds: Set<Long>,
         protectedIds: Set<Long>,
-        protectedTempPaths: Set<String>
+        protectedTempPaths: Set<String>,
+        cleanupBlockedIds: Set<Long>
     ): CleanupResult {
         val result = CleanupResult()
         val root = File(context.cacheDir, YTDLP_TEMP_ROOT)
         val children = root.listFiles().orEmpty()
         children.forEach { child ->
             val downloadId = child.name.toLongOrNull()
+            if (downloadId != null && downloadId in cleanupBlockedIds) {
+                return@forEach
+            }
             if ((downloadId != null && downloadId in protectedIds) ||
                 child.canonicalPathSafe() in protectedTempPaths
             ) {
@@ -209,4 +247,10 @@ class DownloadStartupMaintenance(
             )
         }
     }
+
+    private data class RecoveryResolution(
+        val observedId: Long,
+        val download: DownloadEntity?,
+        val cleanupAllowed: Boolean
+    )
 }

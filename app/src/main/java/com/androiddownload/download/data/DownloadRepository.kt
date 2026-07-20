@@ -6,6 +6,14 @@ import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.FileNameUtils
 import kotlinx.coroutines.flow.Flow
 
+sealed interface DownloadTransitionResult {
+    data object Applied : DownloadTransitionResult
+
+    data class Rejected(
+        val currentStatus: DownloadStatus?
+    ) : DownloadTransitionResult
+}
+
 class DownloadRepository(
     private val dao: DownloadDao
 ) {
@@ -41,58 +49,196 @@ class DownloadRepository(
 
     suspend fun getById(id: Long): DownloadEntity? = dao.getById(id)
 
-    suspend fun update(download: DownloadEntity) = dao.update(
-        download.copy(updatedAt = System.currentTimeMillis())
-    )
-
-    suspend fun updateStatus(
-        id: Long,
-        status: DownloadStatus,
-        errorMessage: String? = null
-    ) {
-        dao.updateStatus(
+    suspend fun markPreparingIfQueued(id: Long): DownloadTransitionResult {
+        return transitionResult(
             id = id,
-            status = status,
-            errorMessage = errorMessage,
-            updatedAt = System.currentTimeMillis()
-        )
-    }
-
-    suspend fun markCanceled(id: Long) {
-        val current = dao.getById(id) ?: return
-        if (current.status == DownloadStatus.COMPLETED ||
-            current.status == DownloadStatus.FAILED ||
-            current.status == DownloadStatus.CANCELED
-        ) {
-            return
-        }
-
-        deleteTempPath(current.tempPath)
-        dao.update(
-            current.copy(
-                status = DownloadStatus.CANCELED,
-                errorMessage = null,
-                tempPath = null,
-                speed = 0,
+            operation = "QUEUED -> PREPARING",
+            affectedRows = dao.markPreparingIfQueued(
+                id = id,
                 updatedAt = System.currentTimeMillis()
             )
         )
     }
 
-    suspend fun markPaused(id: Long) {
-        val current = dao.getById(id) ?: return
-        if (current.status == DownloadStatus.COMPLETED ||
-            current.status == DownloadStatus.FAILED ||
-            current.status == DownloadStatus.CANCELED ||
-            current.status == DownloadStatus.PAUSED
-        ) {
-            return
-        }
+    suspend fun markPreparingIfPaused(id: Long): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "PAUSED -> PREPARING",
+            affectedRows = dao.markPreparingIfPaused(
+                id = id,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
 
-        dao.update(
-            current.copy(
-                status = DownloadStatus.PAUSED,
-                errorMessage = null,
+    suspend fun markRunningIfPreparingOrRunning(
+        id: Long,
+        finalUrl: String?,
+        fileName: String,
+        mimeType: String?,
+        tempPath: String?,
+        totalBytes: Long,
+        downloadedBytes: Long,
+        progress: Int,
+        speed: Long = 0
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "PREPARING/RUNNING -> RUNNING",
+            affectedRows = dao.markRunningIfPreparingOrRunning(
+                id = id,
+                finalUrl = finalUrl,
+                fileName = fileName,
+                mimeType = mimeType,
+                tempPath = tempPath,
+                totalBytes = totalBytes,
+                downloadedBytes = downloadedBytes,
+                progress = progress,
+                speed = speed,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun updateProgressIfRunning(
+        id: Long,
+        tempPath: String?,
+        totalBytes: Long,
+        downloadedBytes: Long,
+        progress: Int,
+        speed: Long
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "RUNNING progress",
+            affectedRows = dao.updateProgressIfRunning(
+                id = id,
+                tempPath = tempPath,
+                totalBytes = totalBytes,
+                downloadedBytes = downloadedBytes,
+                progress = progress,
+                speed = speed,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun markCompletedIfRunning(
+        id: Long,
+        finalUrl: String?,
+        fileName: String,
+        mimeType: String?,
+        destinationUri: String,
+        totalBytes: Long,
+        downloadedBytes: Long
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "RUNNING -> COMPLETED",
+            affectedRows = dao.markCompletedIfRunning(
+                id = id,
+                finalUrl = finalUrl,
+                fileName = fileName,
+                mimeType = mimeType,
+                destinationUri = destinationUri,
+                totalBytes = totalBytes,
+                downloadedBytes = downloadedBytes,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun markFailedIfActive(
+        id: Long,
+        errorMessage: String?,
+        clearTempPath: Boolean = false,
+        resetProgress: Boolean = false
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "active -> FAILED",
+            affectedRows = dao.markFailedIfActive(
+                id = id,
+                errorMessage = errorMessage,
+                clearTempPath = clearTempPath.toSqlFlag(),
+                resetProgress = resetProgress.toSqlFlag(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun markCanceled(id: Long): DownloadTransitionResult {
+        val tempPath = dao.getById(id)?.tempPath
+        val result = transitionResult(
+            id = id,
+            operation = "active -> CANCELED",
+            affectedRows = dao.markCanceledIfActive(
+                id = id,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        if (result == DownloadTransitionResult.Applied) {
+            deleteTempPath(tempPath)
+        }
+        return result
+    }
+
+    suspend fun markPaused(id: Long): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "RUNNING -> PAUSED",
+            affectedRows = dao.markPausedIfRunning(
+                id = id,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun retryIfFailed(
+        id: Long,
+        observedUpdatedAt: Long,
+        tempPath: String?,
+        totalBytes: Long,
+        downloadedBytes: Long,
+        progress: Int
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = id,
+            operation = "FAILED -> QUEUED",
+            affectedRows = dao.retryIfFailed(
+                id = id,
+                observedUpdatedAt = observedUpdatedAt,
+                tempPath = tempPath,
+                totalBytes = totalBytes,
+                downloadedBytes = downloadedBytes,
+                progress = progress,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun recoverIfSnapshotCurrent(
+        observed: DownloadEntity,
+        recoveredStatus: DownloadStatus,
+        errorMessage: String?,
+        tempPath: String?,
+        totalBytes: Long,
+        downloadedBytes: Long,
+        progress: Int
+    ): DownloadTransitionResult {
+        return transitionResult(
+            id = observed.id,
+            operation = "startup recovery",
+            affectedRows = dao.recoverIfSnapshotCurrent(
+                id = observed.id,
+                observedStatus = observed.status,
+                observedUpdatedAt = observed.updatedAt,
+                recoveredStatus = recoveredStatus,
+                errorMessage = errorMessage,
+                tempPath = tempPath,
+                totalBytes = totalBytes,
+                downloadedBytes = downloadedBytes,
+                progress = progress,
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -113,6 +259,23 @@ class DownloadRepository(
         dao.deleteByStatuses(finalizedStatuses.map { it.name })
         return finalizedDownloads
     }
+
+    private suspend fun transitionResult(
+        id: Long,
+        operation: String,
+        affectedRows: Int
+    ): DownloadTransitionResult {
+        return when (affectedRows) {
+            1 -> DownloadTransitionResult.Applied
+            0 -> DownloadTransitionResult.Rejected(dao.getById(id)?.status)
+            else -> error(
+                "Invariante violada em $operation para download $id: " +
+                    "$affectedRows linhas atualizadas"
+            )
+        }
+    }
+
+    private fun Boolean.toSqlFlag(): Int = if (this) 1 else 0
 
     private fun deleteTempPath(tempPath: String?) {
         val path = tempPath?.trim().orEmpty()

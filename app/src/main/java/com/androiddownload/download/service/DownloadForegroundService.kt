@@ -11,6 +11,7 @@ import com.androiddownload.core.model.DownloadEntity
 import com.androiddownload.core.model.DownloadStatus
 import com.androiddownload.core.utils.DownloadSourceClassifier
 import com.androiddownload.core.utils.YtDlpDiagnostics
+import com.androiddownload.download.data.DownloadTransitionResult
 import com.androiddownload.download.http.DownloadMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -79,10 +80,10 @@ class DownloadForegroundService : Service() {
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val original = app.container.repository.getById(downloadId) ?: return@launch
-                val download = if (mode == DownloadMode.RETRY) {
-                    prepareManualRetry(original)
-                } else {
-                    original
+                val download = when (mode) {
+                    DownloadMode.RETRY -> prepareManualRetry(original) ?: return@launch
+                    DownloadMode.RESUME -> prepareManualResume(original) ?: return@launch
+                    DownloadMode.NORMAL -> original
                 }
                 if (DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)) {
                     app.container.downloader.download(downloadId, mode) {
@@ -135,13 +136,29 @@ class DownloadForegroundService : Service() {
         runningJobs.remove(downloadId)?.cancel()
 
         scope.launch {
-            app.container.repository.markCanceled(downloadId)
+            val result = app.container.repository.markCanceled(downloadId)
+            if (result == DownloadTransitionResult.Applied) {
+                app.container.downloader.cleanupCanceledDownload(downloadId)
+                app.container.ytDlpDownloader.cleanupCanceledDownload(downloadId)
+            }
             notificationStates.remove(downloadId)
             finishIfIdle(downloadId)
         }
     }
 
-    private suspend fun prepareManualRetry(download: DownloadEntity): DownloadEntity {
+    private suspend fun prepareManualResume(download: DownloadEntity): DownloadEntity? {
+        val result = app.container.repository.markPreparingIfPaused(download.id)
+        if (result != DownloadTransitionResult.Applied) {
+            return null
+        }
+        val resumed = app.container.repository.getById(download.id)
+            ?.takeIf { it.status == DownloadStatus.PREPARING }
+            ?: return null
+        notifyProgressIfNeeded(resumed, force = true)
+        return resumed
+    }
+
+    private suspend fun prepareManualRetry(download: DownloadEntity): DownloadEntity? {
         val isHttp = DownloadSourceClassifier.shouldUseHttpDownloader(download.sourceUrl)
         return if (isHttp) {
             prepareHttpManualRetry(download)
@@ -150,14 +167,12 @@ class DownloadForegroundService : Service() {
         }
     }
 
-    private suspend fun prepareHttpManualRetry(download: DownloadEntity): DownloadEntity {
+    private suspend fun prepareHttpManualRetry(download: DownloadEntity): DownloadEntity? {
         val tempFile = File(cacheDir, "downloads/${download.id}.part")
         val canReuseTemp = tempFile.isFile && tempFile.length() > 0L && download.downloadedBytes > 0L
         val downloadedBytes = if (canReuseTemp) {
             minOf(download.downloadedBytes, tempFile.length())
         } else {
-            cleanupTempPath(download.tempPath)
-            cleanupTempPath(tempFile.absolutePath)
             0L
         }
         val totalBytes = if (canReuseTemp && download.totalBytes > downloadedBytes) {
@@ -165,22 +180,30 @@ class DownloadForegroundService : Service() {
         } else {
             -1L
         }
-        if (canReuseTemp && download.tempPath != tempFile.absolutePath) {
-            cleanupTempPath(download.tempPath)
-        }
-        val retryDownload = download.copy(
-            destinationUri = null,
-            tempPath = if (canReuseTemp) tempFile.absolutePath else null,
+        val retryTempPath = if (canReuseTemp) tempFile.absolutePath else null
+        val retryProgress = calculateProgress(downloadedBytes, totalBytes)
+        val retried = app.container.repository.retryIfFailed(
+            id = download.id,
+            observedUpdatedAt = download.updatedAt,
+            tempPath = retryTempPath,
             totalBytes = totalBytes,
             downloadedBytes = downloadedBytes,
-            progress = calculateProgress(downloadedBytes, totalBytes),
-            speed = 0,
-            status = DownloadStatus.QUEUED,
-            errorMessage = null
+            progress = retryProgress
         )
-        app.container.repository.update(retryDownload)
+        if (retried != DownloadTransitionResult.Applied) {
+            return null
+        }
+        if (!canReuseTemp) {
+            cleanupTempPath(download.tempPath)
+            cleanupTempPath(tempFile.absolutePath)
+        } else if (download.tempPath != tempFile.absolutePath) {
+            cleanupTempPath(download.tempPath)
+        }
+        val persistedRetry = app.container.repository.getById(download.id)
+            ?.takeIf { it.status == DownloadStatus.QUEUED }
+            ?: return null
         recordManualRetry(
-            download = retryDownload,
+            download = persistedRetry,
             kind = "HTTP direto",
             result = if (canReuseTemp) {
                 "retry manual solicitado; reaproveitou tempPath"
@@ -188,26 +211,31 @@ class DownloadForegroundService : Service() {
                 "retry manual solicitado; reiniciou do zero"
             }
         )
-        notifyProgressIfNeeded(retryDownload, force = true)
-        return retryDownload
+        notifyProgressIfNeeded(persistedRetry, force = true)
+        return persistedRetry
     }
 
-    private suspend fun prepareYtDlpManualRetry(download: DownloadEntity): DownloadEntity {
+    private suspend fun prepareYtDlpManualRetry(download: DownloadEntity): DownloadEntity? {
         val tempDir = File(cacheDir, "ytdlp/${download.id}")
-        val cleanedOldTemp = cleanupTempPath(download.tempPath) || cleanupTempPath(tempDir.absolutePath)
-        val retryDownload = download.copy(
-            destinationUri = null,
+        val retried = app.container.repository.retryIfFailed(
+            id = download.id,
+            observedUpdatedAt = download.updatedAt,
             tempPath = null,
             totalBytes = -1,
             downloadedBytes = 0,
-            progress = 0,
-            speed = 0,
-            status = DownloadStatus.QUEUED,
-            errorMessage = null
+            progress = 0
         )
-        app.container.repository.update(retryDownload)
+        if (retried != DownloadTransitionResult.Applied) {
+            return null
+        }
+        val cleanedRecordedTemp = cleanupTempPath(download.tempPath)
+        val cleanedAttemptDir = cleanupTempPath(tempDir.absolutePath)
+        val cleanedOldTemp = cleanedRecordedTemp || cleanedAttemptDir
+        val persistedRetry = app.container.repository.getById(download.id)
+            ?.takeIf { it.status == DownloadStatus.QUEUED }
+            ?: return null
         recordManualRetry(
-            download = retryDownload,
+            download = persistedRetry,
             kind = "yt-dlp",
             result = if (cleanedOldTemp) {
                 "retry manual solicitado; limpou temp antigo; reiniciou do zero"
@@ -215,8 +243,8 @@ class DownloadForegroundService : Service() {
                 "retry manual solicitado; reiniciou do zero"
             }
         )
-        notifyProgressIfNeeded(retryDownload, force = true)
-        return retryDownload
+        notifyProgressIfNeeded(persistedRetry, force = true)
+        return persistedRetry
     }
 
     private fun cleanupTempPath(path: String?): Boolean {
@@ -254,9 +282,13 @@ class DownloadForegroundService : Service() {
         runningJobs.remove(downloadId)?.cancel()
 
         scope.launch {
-            app.container.repository.markPaused(downloadId)
-            app.container.repository.getById(downloadId)?.let { current ->
-                notifyProgressIfNeeded(current, force = true)
+            val result = app.container.repository.markPaused(downloadId)
+            if (result == DownloadTransitionResult.Applied ||
+                result is DownloadTransitionResult.Rejected
+            ) {
+                app.container.repository.getById(downloadId)?.let { current ->
+                    notifyProgressIfNeeded(current, force = true)
+                }
             }
             finishIfIdle(downloadId)
         }

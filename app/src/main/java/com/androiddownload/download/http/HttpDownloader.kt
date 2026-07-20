@@ -11,6 +11,7 @@ import com.androiddownload.core.utils.FileNameUtils
 import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.data.DownloadTransitionResult
 import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -61,14 +62,16 @@ class HttpDownloader(
             val initial = repository.getById(downloadId) ?: return
             if (!NetworkUtils.hasInternet(context)) {
                 val message = context.getString(R.string.download_no_internet)
-                repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+                val failed = repository.markFailedIfActive(downloadId, message)
                 recordNetworkDiagnostic(
                     download = initial,
                     attempt = "preflight",
                     result = "internet indisponivel",
                     error = message
                 )
-                onProgress()
+                if (failed == DownloadTransitionResult.Applied) {
+                    onProgress()
+                }
                 return
             }
 
@@ -118,7 +121,10 @@ class HttpDownloader(
                         error = lastFailure.message
                     )
                 }
-                repository.updateStatus(downloadId, DownloadStatus.FAILED, lastFailure.message)
+                val failed = repository.markFailedIfActive(downloadId, lastFailure.message)
+                if (failed == DownloadTransitionResult.Applied) {
+                    onProgress()
+                }
             }
         } catch (exception: CancellationException) {
             withContext(NonCancellable) {
@@ -137,13 +143,17 @@ class HttpDownloader(
     }
 
     fun cancel(downloadId: Long) {
-        cancelRequests.add(downloadId)
-        activeCalls[downloadId]?.cancel()
+        activeCalls[downloadId]?.let { call ->
+            cancelRequests.add(downloadId)
+            call.cancel()
+        }
     }
 
     fun pause(downloadId: Long) {
-        pauseRequests.add(downloadId)
-        activeCalls[downloadId]?.cancel()
+        activeCalls[downloadId]?.let { call ->
+            pauseRequests.add(downloadId)
+            call.cancel()
+        }
     }
 
     private suspend fun performAttempt(
@@ -153,12 +163,33 @@ class HttpDownloader(
         forceFromZero: Boolean,
         onProgress: suspend () -> Unit
     ) {
-        repository.updateStatus(downloadId, DownloadStatus.PREPARING)
-        onProgress()
+        val preparing = when (current.status) {
+            DownloadStatus.QUEUED -> repository.markPreparingIfQueued(downloadId)
+            DownloadStatus.PAUSED -> {
+                if (mode == DownloadMode.RESUME) {
+                    repository.markPreparingIfPaused(downloadId)
+                } else {
+                    DownloadTransitionResult.Rejected(current.status)
+                }
+            }
+            DownloadStatus.PREPARING,
+            DownloadStatus.RUNNING -> DownloadTransitionResult.Applied
+            else -> DownloadTransitionResult.Rejected(current.status)
+        }
+        if (preparing != DownloadTransitionResult.Applied) {
+            return
+        }
+        if (current.status != DownloadStatus.PREPARING &&
+            current.status != DownloadStatus.RUNNING
+        ) {
+            onProgress()
+        }
 
         val tempFile = createTempFile(downloadId)
         val resumeAllowed = !forceFromZero && (
-            mode == DownloadMode.RESUME && current.status == DownloadStatus.PAUSED ||
+            mode == DownloadMode.RESUME &&
+                (current.status == DownloadStatus.PAUSED ||
+                    current.status == DownloadStatus.PREPARING) ||
                 mode == DownloadMode.RETRY
             )
 
@@ -228,20 +259,17 @@ class HttpDownloader(
                     startedAt = SystemClock.elapsedRealtime()
                     lastProgress = calculateProgress(responseInfo.writeOffset, resolvedTotalBytes)
 
-                    repository.update(
-                        current.copy(
-                            finalUrl = responseInfo.finalUrl,
-                            fileName = displayFileName,
-                            mimeType = resolvedMimeType,
-                            tempPath = tempFile.absolutePath,
-                            totalBytes = resolvedTotalBytes,
-                            downloadedBytes = responseInfo.writeOffset,
-                            progress = lastProgress,
-                            speed = 0,
-                            status = DownloadStatus.RUNNING,
-                            errorMessage = null
-                        )
+                    val running = repository.markRunningIfPreparingOrRunning(
+                        id = downloadId,
+                        finalUrl = responseInfo.finalUrl,
+                        fileName = displayFileName,
+                        mimeType = resolvedMimeType,
+                        tempPath = tempFile.absolutePath,
+                        totalBytes = resolvedTotalBytes,
+                        downloadedBytes = responseInfo.writeOffset,
+                        progress = lastProgress
                     )
+                    throwIfTransitionRejected(running)
                     onProgress()
                     YtDlpDiagnostics.record(
                         context = context,
@@ -265,20 +293,15 @@ class HttpDownloader(
                             totalBytes = resolvedTotalBytes
                         )
                     ) {
-                        repository.update(
-                            current.copy(
-                                finalUrl = responseInfo.finalUrl,
-                                fileName = displayFileName,
-                                mimeType = resolvedMimeType,
-                                tempPath = tempFile.absolutePath,
-                                totalBytes = resolvedTotalBytes,
-                                downloadedBytes = downloadedBytes,
-                                progress = progress,
-                                speed = calculateSpeed(sessionDownloadedBytes, startedAt, now),
-                                status = DownloadStatus.RUNNING,
-                                errorMessage = null
-                            )
+                        val persisted = repository.updateProgressIfRunning(
+                            id = downloadId,
+                            tempPath = tempFile.absolutePath,
+                            totalBytes = resolvedTotalBytes,
+                            downloadedBytes = downloadedBytes,
+                            progress = progress,
+                            speed = calculateSpeed(sessionDownloadedBytes, startedAt, now)
                         )
+                        throwIfTransitionRejected(persisted)
                         onProgress()
                         lastUpdateAt = now
                         lastProgress = progress
@@ -365,22 +388,30 @@ class HttpDownloader(
                         preserveName = responseInfo.writeOffset > 0L,
                         destinationSubfolder = DownloadDestinationSubfolderResolver.resolve(current)
                     )
-                    repository.update(
-                        current.copy(
-                            finalUrl = responseInfo.finalUrl,
-                            fileName = savedFile.fileName,
-                            mimeType = resolvedMimeType,
-                            destinationUri = savedFile.uri.toString(),
-                            tempPath = null,
-                            totalBytes = resolvedTotalBytes,
-                            downloadedBytes = savedFile.bytes,
-                            progress = 100,
-                            speed = 0,
-                            status = DownloadStatus.COMPLETED,
-                            errorMessage = null
-                        )
+                    val completed = repository.markCompletedIfRunning(
+                        id = downloadId,
+                        finalUrl = responseInfo.finalUrl,
+                        fileName = savedFile.fileName,
+                        mimeType = resolvedMimeType,
+                        destinationUri = savedFile.uri.toString(),
+                        totalBytes = resolvedTotalBytes,
+                        downloadedBytes = savedFile.bytes
                     )
-                    onProgress()
+                    if (completed == DownloadTransitionResult.Applied) {
+                        onProgress()
+                    } else {
+                        val cleaned = DownloadDestinationResolver.deleteSavedFile(context, savedFile)
+                        recordNetworkDiagnostic(
+                            download = current,
+                            attempt = "conclusao rejeitada",
+                            result = if (cleaned) {
+                                "destino desta tentativa removido"
+                            } else {
+                                "nao foi possivel remover o destino desta tentativa"
+                            },
+                            error = null
+                        )
+                    }
                 }
             }
         } catch (exception: CancellationException) {
@@ -565,8 +596,9 @@ class HttpDownloader(
     }
 
     private suspend fun handleCanceled(downloadId: Long) {
-        deleteTempFile(downloadId)
-        repository.markCanceled(downloadId)
+        if (repository.markCanceled(downloadId) == DownloadTransitionResult.Applied) {
+            deleteTempFile(downloadId)
+        }
     }
 
     private suspend fun handlePaused(downloadId: Long) {
@@ -604,6 +636,16 @@ class HttpDownloader(
     private fun calculateSpeed(downloadedBytes: Long, startedAt: Long, now: Long): Long {
         val elapsedMs = (now - startedAt).coerceAtLeast(1)
         return (downloadedBytes * 1000) / elapsedMs
+    }
+
+    fun cleanupCanceledDownload(downloadId: Long) {
+        deleteTempFile(downloadId)
+    }
+
+    private fun throwIfTransitionRejected(result: DownloadTransitionResult) {
+        if (result is DownloadTransitionResult.Rejected) {
+            throw DownloadStateChangedException(result.currentStatus)
+        }
     }
 
     private fun shouldPersistProgress(
@@ -666,6 +708,10 @@ class HttpDownloader(
         val message: String,
         val retryable: Boolean
     )
+
+    private class DownloadStateChangedException(
+        status: DownloadStatus?
+    ) : CancellationException("Estado persistido mudou para ${status?.name ?: "ausente"}")
 
     private class DownloadFailureException(val failure: DownloadFailure) : IOException(failure.message)
 }

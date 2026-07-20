@@ -12,6 +12,7 @@ import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
+import com.androiddownload.download.data.DownloadTransitionResult
 import com.androiddownload.download.media.DownloadMediaPostProcessor
 import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import com.yausername.ffmpeg.FFmpeg
@@ -162,7 +163,7 @@ class YtDlpDownloader(
         }
         if (!NetworkUtils.hasInternet(context)) {
             val message = context.getString(R.string.download_no_internet)
-            repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+            val failed = repository.markFailedIfActive(downloadId, message)
             progressStates.remove(downloadId)
             YtDlpDiagnostics.record(
                 context = context,
@@ -173,11 +174,12 @@ class YtDlpDownloader(
                 error = message,
                 type = "rede"
             )
-            onProgress()
+            if (failed == DownloadTransitionResult.Applied) {
+                onProgress()
+            }
             return
         }
 
-        repository.updateStatus(downloadId, DownloadStatus.QUEUED)
         progressStates.remove(downloadId)
         YtDlpDiagnostics.record(
             context = context,
@@ -222,7 +224,8 @@ class YtDlpDownloader(
                     onProgress = onProgress,
                     allowAutoUpdateRetry = true,
                     allowNetworkRetry = true,
-                    autoUpdateApplied = false
+                    autoUpdateApplied = false,
+                    continuingActiveAttempt = false
                 )
 
                 repository.getById(downloadId)?.let { finished ->
@@ -259,15 +262,15 @@ class YtDlpDownloader(
         onProgress: suspend () -> Unit = {},
         allowAutoUpdateRetry: Boolean,
         allowNetworkRetry: Boolean,
-        autoUpdateApplied: Boolean
+        autoUpdateApplied: Boolean,
+        continuingActiveAttempt: Boolean
     ) {
         withContext(Dispatchers.IO) {
             val flowStartedAt = System.currentTimeMillis()
             initialize()
             if (!initialized) {
-                repository.updateStatus(
+                repository.markFailedIfActive(
                     downloadId,
-                    DownloadStatus.FAILED,
                     context.getString(R.string.download_ytdlp_error)
                 )
                 return@withContext
@@ -276,7 +279,7 @@ class YtDlpDownloader(
             val current = repository.getById(downloadId) ?: return@withContext
             if (!NetworkUtils.hasInternet(context)) {
                 val message = context.getString(R.string.download_no_internet)
-                repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+                repository.markFailedIfActive(downloadId, message)
                 progressStates.remove(downloadId)
                 YtDlpDiagnostics.record(
                     context = context,
@@ -304,7 +307,16 @@ class YtDlpDownloader(
                 return@withContext
             }
 
-            repository.updateStatus(downloadId, DownloadStatus.PREPARING)
+            val preparing = if (continuingActiveAttempt &&
+                current.status == DownloadStatus.RUNNING
+            ) {
+                DownloadTransitionResult.Applied
+            } else {
+                repository.markPreparingIfQueued(downloadId)
+            }
+            if (preparing != DownloadTransitionResult.Applied) {
+                return@withContext
+            }
             onProgress()
             val preparingStartedAt = System.currentTimeMillis()
             YtDlpDiagnostics.record(
@@ -467,7 +479,8 @@ class YtDlpDownloader(
                             onProgress = onProgress,
                             allowAutoUpdateRetry = allowAutoUpdateRetry,
                             allowNetworkRetry = false,
-                            autoUpdateApplied = autoUpdateApplied
+                            autoUpdateApplied = autoUpdateApplied,
+                            continuingActiveAttempt = true
                         )
                         return@withContext
                     }
@@ -490,7 +503,8 @@ class YtDlpDownloader(
                                 onProgress = onProgress,
                                 allowAutoUpdateRetry = false,
                                 allowNetworkRetry = false,
-                                autoUpdateApplied = true
+                                autoUpdateApplied = true,
+                                continuingActiveAttempt = true
                             )
                             return@withContext
                         }
@@ -518,6 +532,9 @@ class YtDlpDownloader(
             }
         }
         progressStates.remove(downloadId)
+    }
+
+    fun cleanupCanceledDownload(downloadId: Long) {
         createTempDir(downloadId).deleteRecursively()
     }
 
@@ -564,19 +581,19 @@ class YtDlpDownloader(
             addOption("-o", outputTemplate)
         }
 
-        repository.update(
-            current.copy(
-                fileName = displayFileName,
-                mimeType = expectedMimeType ?: current.mimeType,
-                tempPath = tempDir.absolutePath,
-                totalBytes = -1,
-                downloadedBytes = 0,
-                progress = 0,
-                speed = 0,
-                status = DownloadStatus.RUNNING,
-                errorMessage = null
-            )
+        val running = repository.markRunningIfPreparingOrRunning(
+            id = downloadId,
+            finalUrl = current.finalUrl,
+            fileName = displayFileName,
+            mimeType = expectedMimeType ?: current.mimeType,
+            tempPath = tempDir.absolutePath,
+            totalBytes = -1,
+            downloadedBytes = 0,
+            progress = 0
         )
+        if (running != DownloadTransitionResult.Applied) {
+            throw DownloadStateChangedException()
+        }
         onProgress()
         YtDlpDiagnostics.record(
             context = context,
@@ -608,7 +625,7 @@ class YtDlpDownloader(
 
         currentCoroutineContext().ensureActive()
         val finalizeStartedAt = System.currentTimeMillis()
-        finalizeDownload(
+        val completed = finalizeDownload(
             downloadId = downloadId,
             current = current,
             tempDir = tempDir,
@@ -616,6 +633,9 @@ class YtDlpDownloader(
             metadataTitle = metadataTitle,
             finalizeStartedAt = finalizeStartedAt
         )
+        if (!completed) {
+            throw DownloadStateChangedException()
+        }
     }
 
     private suspend fun executeWithWatchdog(
@@ -631,12 +651,16 @@ class YtDlpDownloader(
         val lastCallbackAt = AtomicLong(System.currentTimeMillis())
         val lastProgressAt = AtomicLong(System.currentTimeMillis())
         val callbackSeen = AtomicBoolean(false)
+        val persistenceRejected = AtomicBoolean(false)
         val executor = Executors.newSingleThreadExecutor()
         val future = executor.submit(Callable {
             YoutubeDL.getInstance().execute(
                 request = request,
                 processId = processId
             ) { progress: Float, etaSeconds: Long, line: String ->
+                if (persistenceRejected.get()) {
+                    return@execute
+                }
                 lastCallbackAt.set(System.currentTimeMillis())
                 if (callbackSeen.compareAndSet(false, true)) {
                     YtDlpDiagnostics.record(
@@ -662,9 +686,8 @@ class YtDlpDownloader(
                     return@runBlocking
                 }
 
-                progressStates[downloadId] = updatedSnapshot
-
-                val updatedDownload = latest.copy(
+                val persisted = repository.updateProgressIfRunning(
+                    id = downloadId,
                     tempPath = tempDir.absolutePath,
                     progress = updatedSnapshot.percent.coerceIn(0, 100),
                     downloadedBytes = if (updatedSnapshot.downloadedBytes >= 0) {
@@ -681,11 +704,13 @@ class YtDlpDownloader(
                         updatedSnapshot.speedBytesPerSecond
                     } else {
                         latest.speed
-                    },
-                    status = DownloadStatus.RUNNING,
-                    errorMessage = null
+                    }
                 )
-                repository.update(updatedDownload)
+                if (persisted != DownloadTransitionResult.Applied) {
+                    persistenceRejected.set(true)
+                    return@runBlocking
+                }
+                progressStates[downloadId] = updatedSnapshot
                 if (shouldNotifyProgress(previousState, updatedSnapshot, now)) {
                     onProgress()
                 }
@@ -696,6 +721,9 @@ class YtDlpDownloader(
             while (true) {
                 try {
                     future.get(EXECUTE_WATCHDOG_POLL_MS, TimeUnit.MILLISECONDS)
+                    if (persistenceRejected.get()) {
+                        throw DownloadStateChangedException()
+                    }
                     if (callbackSeen.get()) {
                         YtDlpDiagnostics.record(
                             context = context,
@@ -709,6 +737,11 @@ class YtDlpDownloader(
                     return
                 } catch (_: TimeoutException) {
                     currentCoroutineContext().ensureActive()
+                    if (persistenceRejected.get()) {
+                        YoutubeDL.getInstance().destroyProcessById(processId)
+                        future.cancel(true)
+                        throw DownloadStateChangedException()
+                    }
                     if (isCanceled(downloadId)) {
                         future.cancel(true)
                         throw IOException(context.getString(R.string.status_canceled))
@@ -844,7 +877,7 @@ class YtDlpDownloader(
         expectedMimeType: String?,
         metadataTitle: String,
         finalizeStartedAt: Long
-    ) {
+    ): Boolean {
         val outputFile = findFinalOutputFile(tempDir)
             ?: throw IOException(context.getString(R.string.download_ytdlp_error))
 
@@ -898,33 +931,44 @@ class YtDlpDownloader(
             )
             throw exception
         }
-        tempDir.deleteRecursively()
+        val completed = repository.markCompletedIfRunning(
+            id = downloadId,
+            finalUrl = latest.sourceUrl,
+            fileName = savedFile.fileName,
+            mimeType = latest.mimeType ?: inferMimeType(savedFile.fileName),
+            destinationUri = savedFile.uri.toString(),
+            totalBytes = savedFile.bytes,
+            downloadedBytes = savedFile.bytes
+        )
         progressStates.remove(downloadId)
-
-        repository.update(
-            latest.copy(
-                finalUrl = latest.sourceUrl,
-                fileName = savedFile.fileName,
-                mimeType = latest.mimeType ?: inferMimeType(savedFile.fileName),
-                destinationUri = savedFile.uri.toString(),
-                tempPath = null,
-                totalBytes = savedFile.bytes,
-                downloadedBytes = savedFile.bytes,
-                progress = 100,
-                speed = 0,
-                status = DownloadStatus.COMPLETED,
-                errorMessage = null
+        if (completed == DownloadTransitionResult.Applied) {
+            tempDir.deleteRecursively()
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = current.qualitySelector.orEmpty(),
+                attempt = "nome final",
+                result = "arquivo finalizado",
+                error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${savedFile.fileName}; tamanho=${fileBytes}",
+                durationMs = elapsedMs(finalizeStartedAt)
             )
-        )
-        YtDlpDiagnostics.record(
-            context = context,
-            url = current.sourceUrl,
-            option = current.qualitySelector.orEmpty(),
-            attempt = "nome final",
-            result = "arquivo finalizado",
-            error = "getInfo=${metadataTitle}; real=${outputFile.name}; final=${savedFile.fileName}; tamanho=${fileBytes}",
-            durationMs = elapsedMs(finalizeStartedAt)
-        )
+            return true
+        } else {
+            val cleaned = DownloadDestinationResolver.deleteSavedFile(context, savedFile)
+            YtDlpDiagnostics.record(
+                context = context,
+                url = current.sourceUrl,
+                option = current.qualitySelector.orEmpty(),
+                attempt = "conclusao rejeitada",
+                result = if (cleaned) {
+                    "destino desta tentativa removido"
+                } else {
+                    "nao foi possivel remover o destino desta tentativa"
+                },
+                durationMs = elapsedMs(finalizeStartedAt)
+            )
+            return false
+        }
     }
 
     private fun recordPostProcessingResult(
@@ -970,14 +1014,15 @@ class YtDlpDownloader(
     ) {
         val message = buildErrorMessage(current, exception, attemptsApplied)
         progressStates.remove(downloadId)
-        repository.update(
-            current.copy(
-                tempPath = null,
-                status = DownloadStatus.FAILED,
-                errorMessage = message
-            )
+        val failed = repository.markFailedIfActive(
+            id = downloadId,
+            errorMessage = message,
+            clearTempPath = true,
+            resetProgress = true
         )
-        repository.updateStatus(downloadId, DownloadStatus.FAILED, message)
+        if (failed != DownloadTransitionResult.Applied) {
+            return
+        }
         val isNetworkFailure = DownloadErrorFormatter.isTemporaryNetworkError(exception.message) ||
             DownloadErrorFormatter.classify(exception.message) == DownloadErrorFormatter.ErrorKind.NO_INTERNET
         YtDlpDiagnostics.record(
@@ -1300,7 +1345,11 @@ class YtDlpDownloader(
 
     private suspend fun isCanceled(downloadId: Long): Boolean {
         val current = repository.getById(downloadId) ?: return true
-        return current.status == DownloadStatus.CANCELED || !activeProcessIds.containsKey(downloadId)
+        return current.status == DownloadStatus.CANCELED ||
+            current.status == DownloadStatus.PAUSED ||
+            current.status == DownloadStatus.FAILED ||
+            current.status == DownloadStatus.COMPLETED ||
+            !activeProcessIds.containsKey(downloadId)
     }
 
     private fun findFinalOutputFile(tempDir: File): File? {
@@ -1449,6 +1498,9 @@ class YtDlpDownloader(
     )
 
     private class FinalFileValidationException(message: String) : IOException(message)
+
+    private class DownloadStateChangedException :
+        CancellationException("O estado persistido do download mudou")
 
     companion object {
         private const val SETTINGS_PREFS_NAME = "aio_downloader_settings"

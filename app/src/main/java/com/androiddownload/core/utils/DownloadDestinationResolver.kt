@@ -80,6 +80,27 @@ object DownloadDestinationResolver {
         }
     }
 
+    fun deleteSavedFile(context: Context, savedFile: SavedFile): Boolean {
+        val uri = savedFile.uri
+        return runCatching {
+            when (uri.scheme?.lowercase(Locale.US)) {
+                ContentResolver.SCHEME_FILE -> {
+                    uri.path?.let(::File)?.let { file ->
+                        !file.exists() || file.delete()
+                    } ?: false
+                }
+                ContentResolver.SCHEME_CONTENT -> {
+                    if (DocumentsContract.isDocumentUri(context, uri)) {
+                        DocumentsContract.deleteDocument(context.contentResolver, uri)
+                    } else {
+                        context.contentResolver.delete(uri, null, null) > 0
+                    }
+                }
+                else -> false
+            }
+        }.getOrDefault(false)
+    }
+
     fun defaultDestinationLabel(): String = DEFAULT_PUBLIC_DIRECTORY_LABEL
 
     fun defaultDirectory(context: Context): File {
@@ -228,11 +249,12 @@ object DownloadDestinationResolver {
         val directory = File(defaultDirectory(context), cleanDestinationSubfolder(destinationSubfolder))
         directory.mkdirs()
         val cleanName = FileNameUtils.ensureExtension(FileNameUtils.sanitize(preferredName), mimeType)
-        if (preserveName) return File(directory, cleanName)
+        val requestedFile = File(directory, cleanName)
+        if (preserveName && !requestedFile.exists()) return requestedFile
 
         val name = cleanName.substringBeforeLast('.', cleanName)
         val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
-        var candidate = File(directory, cleanName)
+        var candidate = requestedFile
         var index = 1
         while (candidate.exists()) {
             val nextName = if (extension.isBlank()) {
