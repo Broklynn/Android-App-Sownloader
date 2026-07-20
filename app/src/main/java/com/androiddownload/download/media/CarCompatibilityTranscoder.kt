@@ -76,7 +76,11 @@ class CarCompatibilityTranscoder(
             "-c:a",
             profile.audioCodec,
             "-b:a",
-            "192k",
+            "${profile.audioEncodingTargetBitrate / BITS_PER_KILOBIT}k",
+            "-ac",
+            "2",
+            "-ar",
+            "48000",
             "-movflags",
             "+faststart",
             outputFile.absolutePath
@@ -113,5 +117,9 @@ class CarCompatibilityTranscoder(
         data class TimedOut(
             val timeoutMillis: Long
         ) : TranscodeResult()
+    }
+
+    private companion object {
+        const val BITS_PER_KILOBIT = 1_000L
     }
 }

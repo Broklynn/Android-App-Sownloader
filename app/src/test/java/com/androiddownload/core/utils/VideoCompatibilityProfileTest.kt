@@ -2,6 +2,7 @@ package com.androiddownload.core.utils
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,6 +30,22 @@ class VideoCompatibilityProfileTest {
         assertEquals(1280, profile.maxWidth)
         assertEquals(720, profile.maxHeight)
         assertEquals(30, profile.maxFps)
+        assertEquals(31, profile.maxVideoLevel)
+        assertEquals(10_000_000L, profile.maxVideoBitrate)
+        assertEquals(192_000L, profile.audioEncodingTargetBitrate)
+        assertEquals(200_000L, profile.audioCompatibilityBitrateCeiling)
+        assertEquals(
+            VideoCompatibilityProfile.CAR_AUDIO_ENCODING_TARGET_BITRATE,
+            profile.audioEncodingTargetBitrate
+        )
+        assertEquals(
+            VideoCompatibilityProfile.CAR_AUDIO_COMPATIBILITY_BITRATE_CEILING,
+            profile.audioCompatibilityBitrateCeiling
+        )
+        assertNotEquals(
+            profile.audioEncodingTargetBitrate,
+            profile.audioCompatibilityBitrateCeiling
+        )
     }
 
     @Test

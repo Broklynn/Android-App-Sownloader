@@ -12,8 +12,6 @@ import com.androiddownload.core.utils.NetworkUtils
 import com.androiddownload.core.utils.YtDlpQualityOptions
 import com.androiddownload.core.utils.YtDlpDiagnostics
 import com.androiddownload.download.data.DownloadRepository
-import com.androiddownload.download.media.AndroidFfmpegCommandRunner
-import com.androiddownload.download.media.CarCompatibilityTranscoder
 import com.androiddownload.download.media.DownloadMediaPostProcessor
 import com.androiddownload.download.model.DownloadDestinationSubfolderResolver
 import com.yausername.ffmpeg.FFmpeg
@@ -51,9 +49,7 @@ class YtDlpDownloader(
     private val progressUpdateIntervalMs = 1000L
     private val progressHeartbeatIntervalMs = 1000L
     private val executionMutex = Mutex()
-    private val mediaPostProcessor = DownloadMediaPostProcessor(
-        CarCompatibilityTranscoder(AndroidFfmpegCommandRunner(context))
-    )
+    private val mediaPostProcessor = DownloadMediaPostProcessor.create(context)
 
     @Volatile
     private var initialized = false
@@ -943,7 +939,10 @@ class YtDlpDownloader(
                     url = current.sourceUrl,
                     option = current.qualitySelector.orEmpty(),
                     attempt = "compatibilidade carro",
-                    result = "transcodificacao concluida",
+                    result = when (result.route) {
+                        DownloadMediaPostProcessor.ProcessingRoute.REMUX -> "remux concluido"
+                        DownloadMediaPostProcessor.ProcessingRoute.TRANSCODE -> "transcodificacao concluida"
+                    },
                     error = "${result.file.name}; tamanho=${result.file.length()}"
                 )
             }

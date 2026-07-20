@@ -69,9 +69,12 @@ class CarCompatibilityTranscoderTest {
         assertContainsSequence(command, "-c:v", "libx264")
         assertContainsSequence(command, "-profile:v", "baseline")
         assertContainsSequence(command, "-level", "3.1")
+        assertContainsSequence(command, "-preset", "veryfast")
+        assertContainsSequence(command, "-crf", "23")
         assertContainsSequence(command, "-movflags", "+faststart")
         assertTrue(command.optionValue("-vf")?.contains("fps=30") == true)
         assertTrue(command.optionValue("-vf")?.contains("format=yuv420p") == true)
+        assertFalse(command.contains("-threads"))
     }
 
     @Test
@@ -105,6 +108,8 @@ class CarCompatibilityTranscoderTest {
         val command = runner.lastArguments
         assertContainsSequence(command, "-c:a", "aac")
         assertContainsSequence(command, "-b:a", "192k")
+        assertContainsSequence(command, "-ac", "2")
+        assertContainsSequence(command, "-ar", "48000")
     }
 
     @Test

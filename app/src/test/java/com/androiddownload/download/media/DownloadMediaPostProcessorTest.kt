@@ -48,6 +48,10 @@ class DownloadMediaPostProcessorTest {
         assertEquals("video/mp4", result.mimeType)
         assertTrue(result.file.name.startsWith("Video - carro"))
         assertTrue(result.file.length() > 0L)
+        assertEquals(
+            DownloadMediaPostProcessor.ProcessingRoute.TRANSCODE,
+            (result as DownloadMediaPostProcessor.Result.Processed).route
+        )
         assertTrue(runner.wasCalled)
     }
 
@@ -136,7 +140,11 @@ class DownloadMediaPostProcessorTest {
     }
 
     private fun processor(runner: FfmpegCommandRunner): DownloadMediaPostProcessor {
-        return DownloadMediaPostProcessor(CarCompatibilityTranscoder(runner))
+        return DownloadMediaPostProcessor(
+            carCompatibilityTranscoder = CarCompatibilityTranscoder(runner),
+            compatibilityChecker = IncompatibleChecker,
+            carCompatibleRemuxer = UnexpectedRemuxer
+        )
     }
 
     private fun nonEmptyTempFile(prefix: String, suffix: String): File {
@@ -157,6 +165,24 @@ class DownloadMediaPostProcessorTest {
         override suspend fun run(arguments: List<String>): FfmpegExecutionResult {
             wasCalled = true
             return resultProvider(arguments)
+        }
+    }
+
+    private object IncompatibleChecker : CarMediaCompatibilityChecker {
+        override suspend fun inspect(
+            inputFile: File,
+            profile: VideoCompatibilityProfile,
+            requireMp4Container: Boolean
+        ): CarMediaCompatibilityDecision {
+            return CarMediaCompatibilityDecision.Incompatible(
+                listOf(CarMediaIncompatibilityReason.VIDEO_CODEC)
+            )
+        }
+    }
+
+    private object UnexpectedRemuxer : CarMediaRemuxer {
+        override suspend fun remux(inputFile: File, outputFile: File): CarMediaRemuxResult {
+            error("Remux must not be called for an incompatible probe.")
         }
     }
 }
